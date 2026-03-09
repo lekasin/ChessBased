@@ -1,10 +1,15 @@
-import { parsePgn, startingPosition, walk, Box } from 'chessops/pgn';
+import { parsePgn, startingPosition, walk } from 'chessops/pgn';
 import type { PgnNodeData, Game } from 'chessops/pgn';
 import type { Position } from 'chessops';
 import { parseSan } from 'chessops/san';
 import { makeFen } from 'chessops/fen';
 import { makeUci } from 'chessops';
 import { lockMove, positionKey, createOpening, switchOpening } from './repertoire';
+
+class PosBox {
+  constructor(public value: Position) {}
+  clone() { return new PosBox(this.value.clone()); }
+}
 
 /** Extract study ID from a Lichess study URL */
 function parseStudyId(url: string): string | null {
@@ -54,7 +59,7 @@ function importGames(games: Game<PgnNodeData>[], seen: Set<string>): { moves: nu
       continue;
     }
 
-    walk(game.moves, new Box(posResult.value), (ctx, node: PgnNodeData) => {
+    walk(game.moves, new PosBox(posResult.value), (ctx, node: PgnNodeData) => {
       const pos: Position = ctx.value;
       const move = parseSan(pos, node.san);
       if (!move) {
