@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChessBased — Product Discovery Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-deep: #0a0a0b;
+  --bg-card: #131316;
+  --bg-card-hover: #1a1a1f;
+  --bg-surface: #18181c;
+  --border: #2a2a30;
+  --border-subtle: #1f1f25;
+  --text-primary: #f0ece4;
+  --text-secondary: #9a958b;
+  --text-muted: #5c584f;
+  --accent-gold: #c9a84c;
+  --accent-gold-dim: #a68a3a;
+  --accent-gold-glow: rgba(201, 168, 76, 0.15);
+  --accent-green: #4caf82;
+  --accent-green-dim: rgba(76, 175, 130, 0.12);
+  --accent-amber: #d4943a;
+  --accent-amber-dim: rgba(212, 148, 58, 0.12);
+  --accent-red: #c75050;
+  --accent-red-dim: rgba(199, 80, 80, 0.12);
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-body: 'DM Sans', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html { scroll-behavior: smooth; font-size: 16px; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* ============= NAV ============= */
+nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(10, 10, 11, 0.7);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: transform 0.3s ease;
+}
+nav.hidden { transform: translateY(-100%); }
+.nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  height: 56px;
+  gap: 2rem;
+}
+.nav-logo {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  color: var(--accent-gold);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+.nav-links {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.nav-links::-webkit-scrollbar { display: none; }
+.nav-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: all 0.2s;
+  letter-spacing: 0.01em;
+}
+.nav-links a:hover, .nav-links a.active {
+  color: var(--text-primary);
+  background: rgba(201, 168, 76, 0.08);
+}
+
+/* ============= LAYOUT ============= */
+section {
+  min-height: 100vh;
+  padding: 8rem 2rem 4rem;
+  position: relative;
+}
+.container { max-width: 1080px; margin: 0 auto; }
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--accent-gold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+  opacity: 0.85;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.6rem;
+  color: var(--text-primary);
+}
+.section-subtitle {
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+  max-width: 640px;
+  line-height: 1.6;
+  margin-bottom: 3rem;
+}
+
+/* ============= HERO ============= */
+#hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  position: relative;
+  overflow: hidden;
+}
+#hero::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, rgba(201, 168, 76, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-content { position: relative; z-index: 1; max-width: 780px; }
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--accent-gold-glow);
+  border: 1px solid rgba(201, 168, 76, 0.2);
+  border-radius: 100px;
+  padding: 0.4rem 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--accent-gold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 2.5rem;
+}
+.hero-badge .dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent-gold);
+  border-radius: 50%;
+  animation: pulse-dot 2s ease infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 7vw, 5.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin-bottom: 1.5rem;
+}
+.hero-title em {
+  font-style: italic;
+  color: var(--accent-gold);
+}
+.hero-tagline {
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+  max-width: 560px;
+  margin: 0 auto 3.5rem;
+  line-height: 1.65;
+}
+.hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+.hero-metric {
+  background: var(--bg-card);
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+.hero-metric-value {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.hero-metric-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.3rem;
+  letter-spacing: 0.02em;
+}
+
+/* ============= CARDS ============= */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+.card {
+  background: var(--bg-card);
+  padding: 2rem;
+  transition: background 0.25s;
+}
+.card:hover { background: var(--bg-card-hover); }
+.card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  margin-bottom: 1.2rem;
+}
+.card-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.01em;
+}
+.card-text {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ============= STAT BLOCKS ============= */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 2.5rem;
+}
+.stat-block {
+  background: var(--bg-card);
+  padding: 2rem;
+}
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 0.6rem;
+}
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.stat-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.4rem;
+}
+
+/* ============= TABLE ============= */
+.table-wrap {
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 2.5rem;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+thead th {
+  background: var(--bg-surface);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.9rem 1.2rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+}
+tbody td {
+  padding: 0.85rem 1.2rem;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  vertical-align: top;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--bg-card-hover); }
+td:first-child { color: var(--text-primary); font-weight: 500; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+.badge-green { background: var(--accent-green-dim); color: var(--accent-green); }
+.badge-amber { background: var(--accent-amber-dim); color: var(--accent-amber); }
+.badge-red { background: var(--accent-red-dim); color: var(--accent-red); }
+.badge-muted { background: rgba(255,255,255,0.04); color: var(--text-muted); }
+
+/* ============= PIPELINE ============= */
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.pipeline-step {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.1rem 1.5rem;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.2s;
+  cursor: default;
+}
+.pipeline-step:last-child { border-bottom: none; }
+.pipeline-step:hover { background: var(--bg-card-hover); }
+.pipeline-num {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+.pipeline-name {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+.pipeline-status {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+/* ============= FEATURE MATRIX ============= */
+.matrix-cell {
+  text-align: center !important;
+  font-size: 0.82rem;
+}
+.matrix-cell.has { color: var(--accent-green); }
+.matrix-cell.no { color: var(--text-muted); opacity: 0.4; }
+.matrix-cell.partial { color: var(--accent-amber); }
+.matrix-cell.unique { color: var(--accent-gold); font-weight: 600; }
+
+/* ============= PERSONA ============= */
+.persona-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 2.5rem;
+}
+.persona {
+  background: var(--bg-card);
+  padding: 2.5rem;
+}
+.persona-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-gold);
+  margin-bottom: 0.8rem;
+}
+.persona-name {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  margin-bottom: 0.3rem;
+}
+.persona-sub {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+.persona-detail {
+  margin-bottom: 1rem;
+}
+.persona-detail-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.2rem;
+}
+.persona-detail-text {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* ============= MVP PROGRESS ============= */
+.mvp-progress {
+  margin-bottom: 2.5rem;
+}
+.progress-bar-wrap {
+  background: var(--bg-surface);
+  border-radius: 8px;
+  height: 12px;
+  overflow: hidden;
+  margin-bottom: 0.6rem;
+  border: 1px solid var(--border-subtle);
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-gold-dim), var(--accent-gold));
+  border-radius: 8px;
+  transition: width 1s cubic-bezier(0.22, 1, 0.36, 1);
+  width: 0;
+}
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.feature-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.feature-item {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.88rem;
+}
+.feature-item:last-child { border-bottom: none; }
+.feature-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+}
+.feature-check.done {
+  background: var(--accent-green-dim);
+  color: var(--accent-green);
+}
+.feature-check.pending {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+}
+.feature-complexity {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+/* ============= TIMELINE ============= */
+.timeline {
+  position: relative;
+  padding-left: 2rem;
+  margin-bottom: 2.5rem;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.timeline-item {
+  position: relative;
+  padding-bottom: 2rem;
+}
+.timeline-item:last-child { padding-bottom: 0; }
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -2rem;
+  top: 6px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--bg-deep);
+  border: 2px solid var(--accent-gold);
+  transform: translateX(0.5px);
+}
+.timeline-week {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--accent-gold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+}
+.timeline-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.3rem;
+}
+.timeline-text {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ============= QUOTE ============= */
+.quote-block {
+  border-left: 3px solid var(--accent-gold);
+  padding: 1.5rem 2rem;
+  background: var(--accent-gold-glow);
+  border-radius: 0 12px 12px 0;
+  margin-bottom: 2.5rem;
+}
+.quote-text {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+.quote-attr {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* ============= GAP VISUAL ============= */
+.gap-visual {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 2.5rem;
+}
+.gap-item {
+  background: var(--bg-card);
+  padding: 2rem;
+  text-align: center;
+}
+.gap-icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+.gap-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+.gap-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* ============= PRICING ============= */
+.pricing-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 2.5rem;
+}
+.pricing-card {
+  background: var(--bg-card);
+  padding: 2.5rem;
+}
+.pricing-card.featured {
+  background: linear-gradient(135deg, rgba(201, 168, 76, 0.05) 0%, var(--bg-card) 100%);
+}
+.pricing-phase {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-gold);
+  margin-bottom: 0.5rem;
+}
+.pricing-name {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  margin-bottom: 0.3rem;
+}
+.pricing-price {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+.pricing-features {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.pricing-features li {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  padding-left: 1.4rem;
+  position: relative;
+}
+.pricing-features li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-gold-dim);
+  border: 1px solid var(--accent-gold);
+}
+
+/* ============= SUCCESS CRITERIA ============= */
+.criteria-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 2.5rem;
+}
+.criteria-card {
+  background: var(--bg-card);
+  padding: 2rem;
+}
+.criteria-timeframe {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 0.8rem;
+}
+.criteria-timeframe.green { color: var(--accent-green); }
+.criteria-timeframe.gold { color: var(--accent-gold); }
+.criteria-timeframe.red { color: var(--accent-red); }
+.criteria-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.criteria-item {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding-left: 1rem;
+  position: relative;
+}
+.criteria-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+/* ============= RISKS ============= */
+.risk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+.risk-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 1rem;
+  padding: 1.2rem 1.5rem;
+  background: var(--bg-card);
+}
+.risk-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+.risk-text {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* ============= FOOTER ============= */
+footer {
+  border-top: 1px solid var(--border-subtle);
+  padding: 3rem 2rem;
+  text-align: center;
+}
+footer p {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* ============= DIVIDER ============= */
+.divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 3rem 0;
+}
+
+/* ============= REVEAL ANIMATIONS ============= */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ============= RESPONSIVE ============= */
+@media (max-width: 768px) {
+  section { padding: 6rem 1.25rem 3rem; }
+  .hero-metrics { grid-template-columns: repeat(2, 1fr); }
+  .stat-row { grid-template-columns: 1fr; }
+  .persona-grid { grid-template-columns: 1fr; }
+  .pricing-grid { grid-template-columns: 1fr; }
+  .criteria-grid { grid-template-columns: 1fr; }
+  .gap-visual { grid-template-columns: 1fr; }
+  .card-grid { grid-template-columns: 1fr; }
+  .nav-links { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============= NAV ============= -->
+<nav id="nav">
+  <div class="nav-inner">
+    <a href="#hero" class="nav-logo">ChessBased</a>
+    <div class="nav-links">
+      <a href="#problem">Problem</a>
+      <a href="#market">Marked</a>
+      <a href="#audience">Målgruppe</a>
+      <a href="#competition">Konkurrenter</a>
+      <a href="#business">Forretning</a>
+      <a href="#mvp">MVP</a>
+      <a href="#gtm">Go-to-Market</a>
+      <a href="#success">Suksess</a>
+      <a href="#pipeline">Pipeline</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============= HERO ============= -->
+<section id="hero">
+  <div class="hero-content">
+    <div class="hero-badge"><span class="dot"></span> Product Discovery Report</div>
+    <h1 class="hero-title">Chess<em>Based</em></h1>
+    <p class="hero-tagline">Practice chess openings against what your opponents actually play. The only opening trainer powered by real game statistics — not memorization, not engines. Reality.</p>
+    <div class="hero-metrics">
+      <div class="hero-metric">
+        <div class="hero-metric-value">200M+</div>
+        <div class="hero-metric-label">Online sjakkspillere</div>
+      </div>
+      <div class="hero-metric">
+        <div class="hero-metric-value">$244M</div>
+        <div class="hero-metric-label">Marked (2025)</div>
+      </div>
+      <div class="hero-metric">
+        <div class="hero-metric-value">83%</div>
+        <div class="hero-metric-label">MVP ferdig</div>
+      </div>
+      <div class="hero-metric">
+        <div class="hero-metric-value">~$0</div>
+        <div class="hero-metric-label">Driftskostnad</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= PROBLEM ============= -->
+<section id="problem">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">01 / Problemstilling</div>
+      <h2 class="section-title">Åpningskunnskapen festner seg aldri.</h2>
+      <p class="section-subtitle">Sjakkspillere investerer timer i å lære åpninger via YouTube og kurs. Men i neste parti spiller motstanderen noe helt annet. Alternativet — Stockfish — er urealistisk sterkt. Resultatet: kunnskapen forvitrer.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="quote-block">
+        <p class="quote-text">"Når jeg har lært en ny åpningslinje, vil jeg kunne øve den mot realistiske motstander-trekk, slik at kunnskapen festner seg og jeg er forberedt i ekte partier."</p>
+        <p class="quote-attr">Jobs-to-be-Done — primær målgruppe</p>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon" style="background: var(--accent-red-dim); color: var(--accent-red);">&#9888;</div>
+          <div class="card-title">Problemet</div>
+          <div class="card-text">Motstandere online spiller uforutsigbart. Engines er for sterke. Det finnes ingen måte å øve åpninger mot realistisk motstand.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background: var(--accent-amber-dim); color: var(--accent-amber);">&#9733;</div>
+          <div class="card-title">Alvorlighet</div>
+          <div class="card-text">Irriterende — oppleves hver gang man lærer noe nytt. Spillere jobber rundt det eller gir opp systematisk åpningslæring helt.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background: var(--accent-green-dim); color: var(--accent-green);">&#10003;</div>
+          <div class="card-title">Evidens</div>
+          <div class="card-text">16 000 nettpartier med personlig frustrasjon. Støttes av at åpningstreningsmarkedet eksisterer (Chessable, Listudy) — men ingen løser dette.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal" style="margin-top: 2.5rem;">
+      <div class="stat-row">
+        <div class="stat-block">
+          <div class="stat-label">Confidence</div>
+          <div class="stat-value" style="color: var(--accent-green);">8/10</div>
+          <div class="stat-note">Tydelig problem</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Evidensstyrke</div>
+          <div class="stat-value">Medium</div>
+          <div class="stat-note">Personlig + markedsvalidering</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Frekvens</div>
+          <div class="stat-value">Daglig</div>
+          <div class="stat-note">Hver gang en åpning studeres</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= MARKET ============= -->
+<section id="market">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">02 / Markedsanalyse</div>
+      <h2 class="section-title">Stort marked, perfekt timing.</h2>
+      <p class="section-subtitle">Online sjakk vokser 11-13% CAGR. Queen's Gambit-effekten og streaming har skapt millioner av nye spillere som vil forbedre seg. Ingen dominerende "realistisk åpningstrener" eksisterer.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="stat-row">
+        <div class="stat-block">
+          <div class="stat-label">TAM</div>
+          <div class="stat-value">200M+</div>
+          <div class="stat-note">Registrerte online-spillere</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">SAM</div>
+          <div class="stat-value">~10M</div>
+          <div class="stat-note">Aktive spillere som trener åpninger</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">SOM (år 1)</div>
+          <div class="stat-value">1-5K</div>
+          <div class="stat-note">Via organisk community-vekst</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon" style="background: var(--accent-green-dim); color: var(--accent-green);">&#8599;</div>
+          <div class="card-title">Voksende marked</div>
+          <div class="card-text">Online chess instruction: $244M (2025) → $619M (2034). Chess.com passerte 200M brukere. 20M+ daglige partier.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background: var(--accent-gold-glow); color: var(--accent-gold);">&#9737;</div>
+          <div class="card-title">Right time</div>
+          <div class="card-text">Lichess Explorer API er modent. Sjakk-boomen skaper etterspørsel. AI-coaching er en voksende trend. Ingen eier dette segmentet.</div>
+        </div>
+        <div class="card">
+          <div class="card-icon" style="background: var(--accent-green-dim); color: var(--accent-green);">&#9745;</div>
+          <div class="card-title">Lav risiko</div>
+          <div class="card-text">Ingen regulatoriske blokkere. Ingen GDPR-risiko (localStorage). Lichess er open-source-vennlig med stabile API-terms.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= AUDIENCE ============= -->
+<section id="audience">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">03 / Målgruppe</div>
+      <h2 class="section-title">Vi bygger for seriøse hobbyspillere.</h2>
+      <p class="section-subtitle">Intermediate til avanserte online-sjakkspillere som aktivt studerer åpninger — men aldri får øvd dem realistisk.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="persona-grid">
+        <div class="persona">
+          <div class="persona-badge">Primær persona</div>
+          <div class="persona-name">"Lars"</div>
+          <div class="persona-sub">30-tallet &middot; 1800-1900 rating &middot; Rapid & blitz</div>
+          <div class="persona-detail">
+            <div class="persona-detail-label">Situasjon</div>
+            <div class="persona-detail-text">Dedikert hobby-spiller. Spiller etter jobb. Studerer åpninger via YouTube og Lichess studies, men får aldri øvd dem realistisk.</div>
+          </div>
+          <div class="persona-detail">
+            <div class="persona-detail-label">Frustrasjon</div>
+            <div class="persona-detail-text">Investerer tid i å lære åpninger som aldri testes i praksis. Føler at repertoaret har hull som koster rating.</div>
+          </div>
+          <div class="persona-detail">
+            <div class="persona-detail-label">Mål</div>
+            <div class="persona-detail-text">Solid, gjennomtrent repertoar. Mer rating, færre tap i åpningsfasen.</div>
+          </div>
+        </div>
+        <div class="persona">
+          <div class="persona-badge">Sekundær persona</div>
+          <div class="persona-name">"Maria"</div>
+          <div class="persona-sub">20-tallet &middot; 1200-1500 rating &middot; Ambisiøs intermediate</div>
+          <div class="persona-detail">
+            <div class="persona-detail-label">Situasjon</div>
+            <div class="persona-detail-text">Har spilt i et par år. Begynner å innse at åpninger betyr noe. Vet ikke hvor hun skal starte.</div>
+          </div>
+          <div class="persona-detail">
+            <div class="persona-detail-label">Frustrasjon</div>
+            <div class="persona-detail-text">Vet ikke hvilke åpninger hun bør spille, og aner ikke hva motstandere typisk svarer.</div>
+          </div>
+          <div class="persona-detail">
+            <div class="persona-detail-label">Mål</div>
+            <div class="persona-detail-text">Føle seg trygg de første 5-10 trekkene. Ha et minimalt repertoar.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <div class="stat-row">
+        <div class="stat-block">
+          <div class="stat-label">Byttekostnad</div>
+          <div class="stat-value" style="color: var(--accent-green);">Lav</div>
+          <div class="stat-note">Gratis, nettbasert, ingen registrering</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Tech-komfort</div>
+          <div class="stat-value">Høy</div>
+          <div class="stat-note">Lichess-brukere, forstår FEN/PGN</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Emosjonelt behov</div>
+          <div class="stat-value">Kontroll</div>
+          <div class="stat-note">Forberedt og trygg i åpningen</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= COMPETITION ============= -->
+<section id="competition">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">04 / Konkurrentanalyse</div>
+      <h2 class="section-title">Crowded marked. Tydelig gap.</h2>
+      <p class="section-subtitle">Alle eksisterende åpningstrenere fokuserer på memorering via spaced repetition. Ingen kombinerer realistisk simulering, statistikk-transparens og intelligent fareanalyse.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="gap-visual">
+        <div class="gap-item">
+          <div class="gap-icon">&#9816;</div>
+          <div class="gap-title">Realistisk simulering</div>
+          <div class="gap-desc">Bot basert på hva ekte spillere på ditt rating-nivå faktisk spiller</div>
+        </div>
+        <div class="gap-item">
+          <div class="gap-icon">&#9776;</div>
+          <div class="gap-title">Statistikk-transparens</div>
+          <div class="gap-desc">Se explorer-data mens du trener — frekvens, win rate, popularitet</div>
+        </div>
+        <div class="gap-item">
+          <div class="gap-icon">&#9888;</div>
+          <div class="gap-title">Intelligent fareanalyse</div>
+          <div class="gap-desc">Danger, opportunity og trap-alerts basert på statistikk + engine eval</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <h3 style="font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 1.2rem;">Feature-matrise</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th style="text-align:center;">ChessBased</th>
+              <th style="text-align:center;">Chessable</th>
+              <th style="text-align:center;">OpeningTrainer</th>
+              <th style="text-align:center;">Listudy</th>
+              <th style="text-align:center;">Chess.com</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Realistisk motstand</td>
+              <td class="matrix-cell has">&#10003;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell has">&#10003;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell partial">Delvis</td>
+            </tr>
+            <tr>
+              <td>Explorer-statistikk synlig</td>
+              <td class="matrix-cell has">&#10003;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell partial">Delvis</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell partial">Delvis</td>
+            </tr>
+            <tr>
+              <td>Danger/opportunity-alerts</td>
+              <td class="matrix-cell unique">Unikt</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell no">&#10005;</td>
+            </tr>
+            <tr>
+              <td>Trap-deteksjon</td>
+              <td class="matrix-cell unique">Unikt</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell no">&#10005;</td>
+            </tr>
+            <tr>
+              <td>Engine-evaluering</td>
+              <td class="matrix-cell has">&#10003;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell partial">Delvis</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell partial">Premium</td>
+            </tr>
+            <tr>
+              <td>Rating-filtrering</td>
+              <td class="matrix-cell has">&#10003;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell no">&#10005;</td>
+            </tr>
+            <tr>
+              <td>Spaced repetition</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell has">&#10003;</td>
+              <td class="matrix-cell has">&#10003;</td>
+              <td class="matrix-cell has">&#10003;</td>
+              <td class="matrix-cell has">&#10003;</td>
+            </tr>
+            <tr>
+              <td>Helt gratis</td>
+              <td class="matrix-cell has">&#10003;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell no">&#10005;</td>
+              <td class="matrix-cell has">&#10003;</td>
+              <td class="matrix-cell no">&#10005;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Konkurrent</th>
+              <th>Type</th>
+              <th>Prismodell</th>
+              <th>Svakhet</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Chessable</td>
+              <td>Direkte</td>
+              <td>PRO ~$100/år + kurs</td>
+              <td>Memorering. Dyre kurs. Paywall-frustrasjon.</td>
+            </tr>
+            <tr>
+              <td>OpeningTrainer.com</td>
+              <td>Direkte</td>
+              <td>Freemium</td>
+              <td>Paywall. Mindre statistikk-transparens.</td>
+            </tr>
+            <tr>
+              <td>Listudy</td>
+              <td>Direkte</td>
+              <td>Gratis</td>
+              <td>Memorering, ikke realistisk motstand.</td>
+            </tr>
+            <tr>
+              <td>Chess.com</td>
+              <td>Indirekte</td>
+              <td>~$100/år</td>
+              <td>Ikke fokusert på realistisk simulering.</td>
+            </tr>
+            <tr>
+              <td>ChessBase</td>
+              <td>Indirekte</td>
+              <td>$100+</td>
+              <td>Dyrt. Desktop. Bratt læringskurve.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= BUSINESS MODEL ============= -->
+<section id="business">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">05 / Forretningsmodell</div>
+      <h2 class="section-title">Growth first. Monetiser senere.</h2>
+      <p class="section-subtitle">Strategien er å bygge et genuint bedre produkt, samle brukere, og deretter introdusere premium-features som utvidelser — aldri begrensninger av det som allerede er gratis.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <div class="pricing-phase">Fase 1 — Nå</div>
+          <div class="pricing-name">Growth</div>
+          <div class="pricing-price">Gratis — alt inkludert</div>
+          <ul class="pricing-features">
+            <li>Full Lichess Explorer-integrasjon</li>
+            <li>Ubegrenset repertoar</li>
+            <li>Stockfish-evaluering</li>
+            <li>Danger/opportunity/trap-alerts</li>
+            <li>PGN-import</li>
+            <li>Repertoar-tre med navigasjon</li>
+          </ul>
+        </div>
+        <div class="pricing-card featured">
+          <div class="pricing-phase">Fase 2 — Ved 5000+ brukere</div>
+          <div class="pricing-name">Freemium</div>
+          <div class="pricing-price">Free + Pro ~$30/år</div>
+          <ul class="pricing-features">
+            <li>Kjernefunksjonalitet forblir gratis</li>
+            <li>Pro: spaced repetition</li>
+            <li>Pro: avansert analyse</li>
+            <li>Pro: repertoar-statistikk</li>
+            <li>Alltid preview/prøveperiode</li>
+            <li>Aldri ta bort noe som var gratis</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <div class="stat-row">
+        <div class="stat-block">
+          <div class="stat-label">Serve-kostnad</div>
+          <div class="stat-value">~$0</div>
+          <div class="stat-note">Client-side, localStorage, gratis API</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">CAC</div>
+          <div class="stat-value">~$0</div>
+          <div class="stat-note">Organisk via Reddit/forum</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Potential ARR</div>
+          <div class="stat-value">$7.5K</div>
+          <div class="stat-note">5000 brukere, 5% konvertering</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <div class="quote-block">
+        <p class="quote-text">"Betalte features skal alltid ha preview. Aldri ta bort noe som var gratis. Gratisversjonen skal alltid være genuint nyttig — ikke en crippled demo."</p>
+        <p class="quote-attr">Anti-paywall-prinsipp</p>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <h3 style="font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 1.2rem;">Exit-mulighet</h3>
+      <div class="card-grid" style="grid-template-columns: 1fr;">
+        <div class="card">
+          <div class="card-text">Chess.com har kjøpt Chessable og Play Magnus Group. En engasjert brukerbase på 10 000+ med unikt produkt er attraktivt for oppkjøp. Alternativt: donation-modell à la Lichess.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= MVP ============= -->
+<section id="mvp">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">06 / MVP Status</div>
+      <h2 class="section-title">83% ferdig. 5 av 6 must-haves bygget.</h2>
+      <p class="section-subtitle">Kjerneproduktet eksisterer allerede. Eneste gjenstående launch-blocker er lokalisering (engelsk + norsk).</p>
+    </div>
+
+    <div class="reveal">
+      <div class="mvp-progress">
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" id="progress-bar" style="width: 83%;"></div>
+        </div>
+        <div class="progress-label">
+          <span>MVP-fremgang</span>
+          <span>5 / 6 must-haves</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <h3 style="font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 1.2rem;">Must-have features</h3>
+      <div class="feature-list">
+        <div class="feature-item">
+          <div class="feature-check done">&#10003;</div>
+          <div>Sjakkbrett med lovlige trekk <span style="color: var(--text-muted); font-size: 0.78rem;"> — chessground + chessops</span></div>
+          <div class="feature-complexity">Ferdig</div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check done">&#10003;</div>
+          <div>Lichess Explorer-integrasjon med statistikk <span style="color: var(--text-muted); font-size: 0.78rem;"> — rating-filtrering, tidsformat</span></div>
+          <div class="feature-complexity">Ferdig</div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check done">&#10003;</div>
+          <div>Bot med realistiske trekk <span style="color: var(--text-muted); font-size: 0.78rem;"> — popularitetsvektet fra explorer-data</span></div>
+          <div class="feature-complexity">Ferdig</div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check done">&#10003;</div>
+          <div>Repertoar-system <span style="color: var(--text-muted); font-size: 0.78rem;"> — lås trekk, multiple repertoar</span></div>
+          <div class="feature-complexity">Ferdig</div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check done">&#10003;</div>
+          <div>Engine-evaluering <span style="color: var(--text-muted); font-size: 0.78rem;"> — Stockfish 17 WASM</span></div>
+          <div class="feature-complexity">Ferdig</div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check pending">&#8230;</div>
+          <div>Lokalisering / språkstøtte <span style="color: var(--text-muted); font-size: 0.78rem;"> — minimum EN + NO</span></div>
+          <div class="feature-complexity"><span class="badge badge-amber">Medium</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal" style="margin-top: 2.5rem;">
+      <h3 style="font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 1.2rem;">Roadmap</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Prioritet</th>
+              <th>Feature</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge badge-green">Bør ha</span></td>
+              <td>Danger/opportunity/trap-alerts</td>
+              <td><span class="badge badge-green">Ferdig</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-green">Bør ha</span></td>
+              <td>Repertoar-tre (tree view)</td>
+              <td><span class="badge badge-green">Ferdig</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-green">Bør ha</span></td>
+              <td>PGN-import</td>
+              <td><span class="badge badge-green">Ferdig</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-amber">Bør ha</span></td>
+              <td>Responsivt design (mobilvennlig)</td>
+              <td><span class="badge badge-amber">Delvis</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-amber">Bør ha</span></td>
+              <td>Onboarding / tutorial</td>
+              <td><span class="badge badge-muted">Planlagt</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-muted">Kan vente</span></td>
+              <td>Spaced repetition</td>
+              <td><span class="badge badge-muted">Backlog</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-muted">Kan vente</span></td>
+              <td>Innlogging + sync</td>
+              <td><span class="badge badge-muted">Backlog</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-muted">Kan vente</span></td>
+              <td>Native mobilapp</td>
+              <td><span class="badge badge-muted">Backlog</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-muted">Kan vente</span></td>
+              <td>Motstanderanalyse + import</td>
+              <td><span class="badge badge-muted">Backlog</span></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-muted">Kan vente</span></td>
+              <td>Spill mot gitt motstander</td>
+              <td><span class="badge badge-muted">Backlog</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= GTM ============= -->
+<section id="gtm">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">07 / Go-to-Market</div>
+      <h2 class="section-title">De første 100 brukerne.</h2>
+      <p class="section-subtitle">Organisk vekst via sjakkfellesskap. Null markedsføringsbudsjett. Produktet selger seg selv — vi trenger bare å få det foran riktige øyne.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="quote-block">
+        <p class="quote-text">"Practice chess openings against what your opponents actually play — free, powered by Lichess Explorer."</p>
+        <p class="quote-attr">Posisjonering — one-liner</p>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <h3 style="font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 1.5rem;">Launch-plan</h3>
+      <div class="timeline">
+        <div class="timeline-item">
+          <div class="timeline-week">Uke 0 — Forberedelse</div>
+          <div class="timeline-title">Bygg troverdighet</div>
+          <div class="timeline-text">Delta genuint i r/chess. Forbered demo-GIF (30 sek) og personlig historie-post. Skriv Show HN-post.</div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-week">Uke 1 — Launch</div>
+          <div class="timeline-title">Community-lansering</div>
+          <div class="timeline-text">r/chess post med demo-GIF. Lichess Forum-post. Show HN. Kryss-post til r/lichess. Konverteringssti: Reddit → chessbased.web.app → prøv umiddelbart (ingen registrering).</div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-week">Uke 2 — Allianser</div>
+          <div class="timeline-title">YouTuber-partnerskap</div>
+          <div class="timeline-text">Kontakt 3-5 mid-tier sjakk-YouTubere (10K-50K subs). Kontakt sjakkbloggere/nyhetsbrev. Aktiv respons på feedback.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <h3 style="font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 1.2rem;">Distribusjonskanaler</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Kanal</th>
+              <th>Rekkevidde</th>
+              <th>Kostnad</th>
+              <th>Hastighet</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>r/chess (700K+)</td>
+              <td><span class="badge badge-green">Høy</span></td>
+              <td>Gratis</td>
+              <td>Rask</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>Lichess Forum</td>
+              <td><span class="badge badge-green">Høy</span></td>
+              <td>Gratis</td>
+              <td>Medium</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>Sjakk-YouTubere</td>
+              <td><span class="badge badge-green">Høy</span></td>
+              <td>Gratis</td>
+              <td>Medium</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>Hacker News</td>
+              <td><span class="badge badge-amber">Medium</span></td>
+              <td>Gratis</td>
+              <td>Rask</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td>SEO</td>
+              <td><span class="badge badge-green">Høy</span></td>
+              <td>Gratis</td>
+              <td>Sakte</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <h3 style="font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 1.2rem;">Launch-sjekkliste</h3>
+      <div class="feature-list">
+        <div class="feature-item">
+          <div class="feature-check pending">&#8230;</div>
+          <div>Landing page med klar value prop</div>
+          <div class="feature-complexity"><span class="badge badge-red">Blocking</span></div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check pending">&#8230;</div>
+          <div>Demo-GIF/video (30 sek kjerne-flow)</div>
+          <div class="feature-complexity"><span class="badge badge-red">Blocking</span></div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check pending">&#8230;</div>
+          <div>Reddit launch-post med personlig historie</div>
+          <div class="feature-complexity"><span class="badge badge-red">Blocking</span></div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check pending">&#8230;</div>
+          <div>Lichess Forum-post</div>
+          <div class="feature-complexity"><span class="badge badge-red">Blocking</span></div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check pending">&#8230;</div>
+          <div>Show HN-post</div>
+          <div class="feature-complexity"><span class="badge badge-amber">Anbefalt</span></div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-check pending">&#8230;</div>
+          <div>SEO-optimalisert tittel/meta</div>
+          <div class="feature-complexity"><span class="badge badge-muted">Kan vente</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= SUCCESS ============= -->
+<section id="success">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">08 / Suksesskriterier</div>
+      <h2 class="section-title">Hva betyr suksess?</h2>
+      <p class="section-subtitle">Personlig bruk + en håndfull faste brukere. Ikke 1000 brukere — bare bevis på at det fungerer og at andre også finner verdi i det.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="criteria-grid">
+        <div class="criteria-card">
+          <div class="criteria-timeframe green">Etter 1 uke</div>
+          <div class="criteria-items">
+            <div class="criteria-item">Skaperen bruker verktøyet selv daglig</div>
+            <div class="criteria-item">10+ unike besøkende fra launch-poster</div>
+            <div class="criteria-item">Minst 1 ekstern feedback</div>
+          </div>
+        </div>
+        <div class="criteria-card">
+          <div class="criteria-timeframe gold">Etter 1 måned</div>
+          <div class="criteria-items">
+            <div class="criteria-item">10+ brukere som returnerer ukentlig</div>
+            <div class="criteria-item">Positiv feedback fra 3+ brukere</div>
+            <div class="criteria-item">Skaperens repertoar har blitt sterkere</div>
+          </div>
+        </div>
+        <div class="criteria-card">
+          <div class="criteria-timeframe red">Kill-kriterier</div>
+          <div class="criteria-items">
+            <div class="criteria-item">Ingen eksterne brukere etter 4 uker med aktiv promotering</div>
+            <div class="criteria-item">Skaperen selv slutter å bruke verktøyet</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal">
+      <h3 style="font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 1.2rem;">Risiko og antakelser</h3>
+      <div class="risk-list">
+        <div class="risk-item">
+          <div class="risk-icon" style="background: var(--accent-amber-dim); color: var(--accent-amber);">A</div>
+          <div>
+            <div style="font-weight: 500; font-size: 0.88rem; margin-bottom: 0.2rem;">Brukere konverterer til Pro</div>
+            <div class="risk-text">Antakelse: brukere som får verdi gratis vil betale for "nice-to-have" utvidelser.</div>
+          </div>
+          <div class="badge badge-amber">Antakelse</div>
+        </div>
+        <div class="risk-item">
+          <div class="risk-icon" style="background: var(--accent-amber-dim); color: var(--accent-amber);">A</div>
+          <div>
+            <div style="font-weight: 500; font-size: 0.88rem; margin-bottom: 0.2rem;">Organisk vekst er nok</div>
+            <div class="risk-text">Antakelse: Reddit/forum-poster og YouTuber-partnerskap gir tilstrekkelig brukerbase uten budsjett.</div>
+          </div>
+          <div class="badge badge-amber">Antakelse</div>
+        </div>
+        <div class="risk-item">
+          <div class="risk-icon" style="background: var(--accent-red-dim); color: var(--accent-red);">R</div>
+          <div>
+            <div style="font-weight: 500; font-size: 0.88rem; margin-bottom: 0.2rem;">Lichess API-endringer</div>
+            <div class="risk-text">Risiko: Lichess endrer API-terms eller innfører strengere rate limiting. Kjerneprodukt avhenger av denne datakilden.</div>
+          </div>
+          <div class="badge badge-red">Risiko</div>
+        </div>
+        <div class="risk-item">
+          <div class="risk-icon" style="background: var(--accent-red-dim); color: var(--accent-red);">R</div>
+          <div>
+            <div style="font-weight: 500; font-size: 0.88rem; margin-bottom: 0.2rem;">Chess.com bygger tilsvarende</div>
+            <div class="risk-text">Risiko: Chess.com med 200M brukere og Chessable-integrasjon kan lansere lignende funksjonalitet gratis.</div>
+          </div>
+          <div class="badge badge-red">Risiko</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= PIPELINE ============= -->
+<section id="pipeline">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">Discovery Pipeline</div>
+      <h2 class="section-title">8/8 steg gjennomført.</h2>
+      <p class="section-subtitle">Komplett product discovery fra problemdefinisjon til spec-dokument. Alle gates bestått.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="pipeline">
+        <div class="pipeline-step">
+          <div class="pipeline-num">01</div>
+          <div class="pipeline-name">Problem Definition</div>
+          <div class="pipeline-status"><span class="badge badge-green">PASS 8/10</span></div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">02</div>
+          <div class="pipeline-name">Market Research</div>
+          <div class="pipeline-status"><span class="badge badge-green">PASS</span></div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">03</div>
+          <div class="pipeline-name">Audience Definition</div>
+          <div class="pipeline-status"><span class="badge badge-green">PASS</span></div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">04</div>
+          <div class="pipeline-name">Competitor Analysis</div>
+          <div class="pipeline-status"><span class="badge badge-amber">PASS m/advarsel</span></div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">05</div>
+          <div class="pipeline-name">Business Model</div>
+          <div class="pipeline-status"><span class="badge badge-green">PASS</span></div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">06</div>
+          <div class="pipeline-name">MVP Scope</div>
+          <div class="pipeline-status"><span class="badge badge-green">PASS 5/6</span></div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">07</div>
+          <div class="pipeline-name">Go-to-Market</div>
+          <div class="pipeline-status"><span class="badge badge-green">PASS</span></div>
+        </div>
+        <div class="pipeline-step">
+          <div class="pipeline-num">08</div>
+          <div class="pipeline-name">Spec Generator</div>
+          <div class="pipeline-status"><span class="badge badge-green">PASS 8/8</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal" style="margin-top: 2.5rem;">
+      <h3 style="font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 1.2rem;">Spec Quality Report</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Seksjon</th>
+              <th>Confidence</th>
+              <th>Begrunnelse</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Problemstilling</td>
+              <td><span class="badge badge-green">High</span></td>
+              <td>Sterk personlig erfaring, tydelig problem</td>
+            </tr>
+            <tr>
+              <td>Målgruppe</td>
+              <td><span class="badge badge-green">High</span></td>
+              <td>Konkret persona basert på skaperen selv</td>
+            </tr>
+            <tr>
+              <td>Konkurrentbilde</td>
+              <td><span class="badge badge-green">High</span></td>
+              <td>Grundig research, klart gap identifisert</td>
+            </tr>
+            <tr>
+              <td>MVP-scope</td>
+              <td><span class="badge badge-green">High</span></td>
+              <td>5/6 features allerede bygget</td>
+            </tr>
+            <tr>
+              <td>Forretningsmodell</td>
+              <td><span class="badge badge-amber">Medium</span></td>
+              <td>Growth-first er klar, monetisering er opsjon</td>
+            </tr>
+            <tr>
+              <td>Tech-krav</td>
+              <td><span class="badge badge-green">High</span></td>
+              <td>Produktet eksisterer allerede</td>
+            </tr>
+            <tr>
+              <td>Go-to-market</td>
+              <td><span class="badge badge-amber">Medium</span></td>
+              <td>Solid plan, men krever community-building fra scratch</td>
+            </tr>
+            <tr>
+              <td>Suksesskriterier</td>
+              <td><span class="badge badge-green">High</span></td>
+              <td>Personlig og målbart</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="reveal" style="margin-top: 2.5rem;">
+      <div class="stat-row" style="grid-template-columns: 1fr;">
+        <div class="stat-block" style="text-align: center; padding: 3rem;">
+          <div class="stat-label">Vurdering</div>
+          <div class="stat-value" style="font-size: 1.6rem; color: var(--accent-green);">Klar for engineering</div>
+          <div class="stat-note" style="max-width: 560px; margin: 0.8rem auto 0;">Produktet er allerede i stor grad bygget. Spec bekrefter retning, avdekker tydelig markedsgap, og definerer roadmap for vekst og monetisering.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============= FOOTER ============= -->
+<footer>
+  <p>ChessBased Product Discovery Report &middot; Generert 1. mars 2026 &middot; Discovery Pipeline v1.0</p>
+</footer>
+
+<script>
+// Reveal on scroll
+const reveals = document.querySelectorAll('.reveal');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((entry, i) => {
+    if (entry.isIntersecting) {
+      setTimeout(() => entry.target.classList.add('visible'), i * 80);
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
+reveals.forEach(el => observer.observe(el));
+
+// Active nav link
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('.nav-links a');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(section => {
+    const top = section.offsetTop - 120;
+    if (scrollY >= top) current = section.getAttribute('id');
+  });
+  navLinks.forEach(link => {
+    link.classList.toggle('active', link.getAttribute('href') === '#' + current);
+  });
+});
+
+// Progress bar animation
+const progressBar = document.getElementById('progress-bar');
+const progressObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      progressBar.style.width = '83%';
+      progressObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.3 });
+progressBar.style.width = '0';
+progressObserver.observe(progressBar.parentElement);
+
+// Hide nav on scroll down, show on scroll up
+let lastScroll = 0;
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', () => {
+  const currentScroll = window.scrollY;
+  if (currentScroll > lastScroll && currentScroll > 200) {
+    nav.classList.add('hidden');
+  } else {
+    nav.classList.remove('hidden');
+  }
+  lastScroll = currentScroll;
+});
+</script>
+</body>
+</html>
