@@ -38,6 +38,8 @@ export function setReportNavigateCallback(cb: ReportNavigateCallback): void {
 }
 
 let reportOpen = false;
+let reportContentBuilt = false;
+let lastBuildGameCount = -1;
 let savedFilters: PersonalFilters = {};
 let reportFilters: ReportFilters = {};
 let reportCurrentRating: number | null = null;
@@ -229,9 +231,21 @@ export async function openReportPage(): Promise<void> {
   if (reportOpen) return;
   reportOpen = true;
   pushKeyLayer('report', handleReportKeydown);
-  // Save current explorer filters so we can restore on close
   savedFilters = getPersonalFilters();
-  // Initialize report filters from main config speeds
+  setViewOnly(true);
+
+  // If content is already built and game count hasn't changed, just restore state
+  const currentGameCount = getPersonalGames()?.length ?? 0;
+  if (reportContentBuilt && currentGameCount === lastBuildGameCount) {
+    syncExplorerFilters(reportFilters);
+    if (selectedLine) {
+      setOrientation(selectedLine.color);
+      updateBoardForLine();
+    }
+    return;
+  }
+
+  // Full build: compute filters and render from scratch
   const appConfig = loadConfig();
   let explorerConfig = getPersonalConfig();
   if (explorerConfig?.platform === 'chesscom') {
@@ -251,11 +265,6 @@ export async function openReportPage(): Promise<void> {
     maxRating: reportCurrentRating != null ? currentRatingBounds(reportCurrentRating).max : undefined,
   };
 
-  // Set main board to view-only for report mode
-  setViewOnly(true);
-
-  // CSS mode classes handle layout via .trainer-only / .report-only crossfade.
-  // Always re-render content (data may have changed since last open).
   const page = document.getElementById('report-page')!;
   const detail = document.getElementById('report-detail')!;
   const boardControls = document.getElementById('report-board-controls')!;
@@ -269,10 +278,14 @@ export async function openReportPage(): Promise<void> {
 
   if (!hasPersonalData() || !games || !config) {
     renderEmptyState(page, detail);
+    reportContentBuilt = true;
+    lastBuildGameCount = 0;
     return;
   }
 
   renderPage(page, games, config.username);
+  reportContentBuilt = true;
+  lastBuildGameCount = games.length;
 }
 
 function renderEmptyState(page: HTMLElement, detail: HTMLElement): void {
@@ -366,6 +379,7 @@ function renderEmptyState(page: HTMLElement, detail: HTMLElement): void {
       resultEl.className = 'report-import-result success';
       // Re-render the report page with data
       reportOpen = false;  // Allow openReportPage to re-enter
+      reportContentBuilt = false;  // Force full rebuild with new data
       setTimeout(() => openReportPage(), 500);
     } catch (e) {
       progressEl.classList.add('hidden');
@@ -545,6 +559,7 @@ function renderPage(page: HTMLElement, allGames: readonly GameMeta[], username: 
       reportRefreshInProgress = false;
       if (updatedGames && updatedConfig) {
         renderPage(page, updatedGames, updatedConfig.username);
+        lastBuildGameCount = updatedGames.length;
       } else {
         rerender();
       }
