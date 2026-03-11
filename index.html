@@ -10,25 +10,36 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
-  <div id="app">
+  <div id="app" class="mode-trainer">
+    <div id="app-nav">
+      <div class="app-nav-brand">&#9822; ChessBased <span class="app-nav-brand-subtitle">Opening Report</span></div>
+      <div class="app-nav-tabs" role="tablist">
+        <button class="app-nav-tab selected" data-mode="trainer">Trainer</button>
+        <button class="app-nav-tab" data-mode="report">Report</button>
+        <div class="app-nav-indicator"></div>
+      </div>
+      <div class="app-nav-actions">
+        <button id="nav-help-btn" class="btn icon" data-tooltip="Help &amp; shortcuts">?</button>
+      </div>
+    </div>
+    <div id="app-content">
     <div id="left-sidebar">
-      <div class="sidebar-header">
-        <span class="sidebar-header-title">ChessBased</span>
-        <button id="sidebar-help-btn" class="btn icon" data-tooltip="Help &amp; shortcuts">?</button>
+      <div class="trainer-only">
+        <div class="sidebar-section sidebar-section-openings">
+          <div class="sidebar-section-header">Openings</div>
+          <div id="system-picker"></div>
+          <div id="repertoire-actions"></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-section-header">Settings</div>
+          <div id="config-inline"></div>
+        </div>
+        <div class="sidebar-section sidebar-section-games">
+          <div id="games-section-header" class="sidebar-section-header">Games</div>
+          <div id="recent-games-container"></div>
+        </div>
       </div>
-      <div class="sidebar-section">
-        <div class="sidebar-section-header">Openings</div>
-        <div id="system-picker"></div>
-        <div id="repertoire-actions"></div>
-      </div>
-      <div class="sidebar-section">
-        <div class="sidebar-section-header">Settings</div>
-        <div id="config-inline"></div>
-      </div>
-      <div class="sidebar-section sidebar-section-games">
-        <div id="games-section-header" class="sidebar-section-header">Games</div>
-        <div id="recent-games-container"></div>
-      </div>
+      <div id="report-page" class="report-page report-only"></div>
     </div>
     <div id="board-column">
       <div id="board-row">
@@ -38,6 +49,7 @@
         </div>
         <div id="board"></div>
       </div>
+      <div id="board-opening-label"></div>
       <div id="board-scroll">
         <div id="controls"></div>
         <div id="alert-banner"></div>
@@ -55,21 +67,26 @@
           </div>
         </div>
       </div>
+      <div id="report-board-controls" class="report-only"></div>
       <div id="mobile-tabs"></div>
       <div id="mobile-panel-moves" class="mobile-panel"></div>
       <div id="mobile-panel-explorer" class="mobile-panel"></div>
       <div id="mobile-panel-repertoire" class="mobile-panel"></div>
     </div>
     <div id="right-sidebar">
-      <div id="status"></div>
-      <div id="engine-lines" class="hidden"></div>
-      <div id="sidebar-tabs" class="segment-picker">
-        <button class="segment-btn selected" data-tab="database">Database</button>
-        <button class="segment-btn" data-tab="personal">My Games</button>
+      <div class="trainer-only">
+        <div id="status"></div>
+        <div id="engine-lines" class="hidden"></div>
+        <div id="sidebar-tabs" class="segment-picker">
+          <button class="segment-btn selected" data-tab="database">Database</button>
+          <button class="segment-btn" data-tab="personal">My Games</button>
+        </div>
+        <div id="tab-explorer" class="tab-panel">
+          <div id="explorer-moves"></div>
+        </div>
       </div>
-      <div id="tab-explorer" class="tab-panel">
-        <div id="explorer-moves"></div>
-      </div>
+      <div id="report-detail" class="report-only"></div>
+    </div>
     </div>
     <div id="pgn-modal-overlay" class="drawer-overlay hidden"></div>
     <div id="pgn-modal" class="pgn-modal hidden">
@@ -133,8 +150,10 @@
           <tr><td><kbd>F</kbd></td><td>Flip board</td></tr>
           <tr><td><kbd>L</kbd></td><td>Lock / unlock the next move</td></tr>
           <tr><td><kbd>E</kbd></td><td>Toggle engine eval bar</td></tr>
-          <tr><td><kbd>1</kbd></td><td>Database tab</td></tr>
-          <tr><td><kbd>2</kbd></td><td>My Games tab</td></tr>
+          <tr><td><kbd>1</kbd></td><td>Trainer mode</td></tr>
+          <tr><td><kbd>2</kbd></td><td>Report mode</td></tr>
+          <tr><td><kbd>D</kbd></td><td>Database tab</td></tr>
+          <tr><td><kbd>G</kbd></td><td>My Games tab</td></tr>
           <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
         </table>
       </div>
@@ -229,7 +248,6 @@
       </div>
     </div>
   </div>
-  <div id="report-page" class="report-page hidden"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

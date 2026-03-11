@@ -1,3 +1,5 @@
+import { pushKeyLayer, popKeyLayer } from './keyboard';
+
 export interface ConfirmButton {
   label: string;
   value: string;
@@ -78,24 +80,23 @@ export function confirmModal(options: ConfirmOptions): Promise<string | null> {
     }
 
     function cleanup(value: string | null) {
-      document.removeEventListener('keydown', onKey, true);
+      popKeyLayer('confirm');
       overlay.remove();
       resolve(value);
-    }
-
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        e.preventDefault();
-        cleanup(null);
-      }
     }
 
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) cleanup(null);
     });
 
-    document.addEventListener('keydown', onKey, true);
+    pushKeyLayer('confirm', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cleanup(null);
+        return true;
+      }
+      return false;
+    });
     document.body.append(overlay);
   });
 }

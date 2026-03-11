@@ -363,6 +363,26 @@ export function getBoard(): BoardState | null {
   return state;
 }
 
+export function redrawBoard(): void {
+  state?.cg.redrawAll();
+}
+
+export function setViewOnly(viewOnly: boolean): void {
+  if (!state) return;
+  state.cg.set({
+    viewOnly,
+    movable: viewOnly ? { color: undefined } : {
+      color: 'both',
+      dests: chessgroundDests(state.chess),
+    },
+  });
+}
+
+export function setBoardFen(fen: string, lastMove?: [Key, Key]): void {
+  if (!state) return;
+  state.cg.set({ fen, lastMove });
+}
+
 function squareNameToIndex(name: string): number | undefined {
   if (name.length !== 2) return undefined;
   const file = name.charCodeAt(0) - 'a'.charCodeAt(0);

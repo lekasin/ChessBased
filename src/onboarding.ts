@@ -1,3 +1,5 @@
+import { pushKeyLayer, popKeyLayer } from './keyboard';
+
 const STORAGE_KEY = 'chessbased-onboarding-complete';
 
 const LOCK_OPEN_SVG = '<svg viewBox="0 0 24 24"><path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/></svg>';
@@ -300,29 +302,30 @@ export function showOnboarding(): void {
   function dismiss() {
     localStorage.setItem(STORAGE_KEY, '1');
     overlay.classList.add('onboarding-fade-out');
-    document.removeEventListener('keydown', onKey, true);
+    popKeyLayer('onboarding');
     setTimeout(() => overlay.remove(), 400);
-  }
-
-  function onKey(e: KeyboardEvent) {
-    if (e.key === 'ArrowRight' || e.key === 'Enter') {
-      e.preventDefault();
-      e.stopPropagation();
-      goNext();
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      e.stopPropagation();
-      if (currentStep > 0) goTo(currentStep - 1);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      dismiss();
-    }
   }
 
   skipBtn.addEventListener('click', dismiss);
   nextBtn.addEventListener('click', goNext);
-  document.addEventListener('keydown', onKey, true);
+  pushKeyLayer('onboarding', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'Enter') {
+      e.preventDefault();
+      goNext();
+      return true;
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      if (currentStep > 0) goTo(currentStep - 1);
+      return true;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      dismiss();
+      return true;
+    }
+    return false;
+  });
 
   renderStep(0);
   document.body.append(overlay);

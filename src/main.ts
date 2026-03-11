@@ -12,6 +12,7 @@ import {
 import {
   flipBoard, navigateBack, navigateForward, navigateTo, onViewChange,
   getMoveHistory, getViewIndex, isViewingHistory, showFen, replayLine, setOrientation,
+  redrawBoard,
 } from './board';
 import {
   initUI,
@@ -35,13 +36,15 @@ import {
 } from './ui';
 import { renderHistoryTree, refreshHistoryTree, setSelectedFen, type LineEntry } from './history-tree';
 import { setTreeNavigateCallback } from './tree-ui';
-import { closeReportPage, openReportPage, setReportNavigateCallback, shouldRestoreReportPage } from './report-ui';
+import { closeReportPage, openReportPage, setReportNavigateCallback } from './report-ui';
+import { getCurrentMode, switchMode, onModeChange, applyModeClass, initModeRouting } from './mode';
 import { setPersonalFilters, isDBReady } from './personal-explorer';
 import { initMobileTabs } from './mobile-tabs';
 import { hasCompletedOnboarding, showOnboarding } from './onboarding';
 import type { AppConfig, GamePhase } from './types';
 import { initEngine, evaluate, winningChance, formatScore, setMultiPV, setEngineErrorListener, retryEngine } from './engine';
 import type { EvalScore, EngineLine } from './engine';
+import { pushKeyLayer } from './keyboard';
 
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -224,81 +227,85 @@ function boot(): void {
     },
   );
 
-  document.addEventListener('keydown', (e) => {
+  pushKeyLayer('main', (e) => {
     const tag = (e.target as HTMLElement).tagName;
     const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
-    // Arrow keys work even in modals (for opening library nav)
     if (e.key === 'ArrowLeft') {
-      if (isInput) return;
+      if (isInput) return false;
       e.preventDefault();
       navigateBack();
-      return;
+      return true;
     }
     if (e.key === 'ArrowRight') {
-      if (isInput) return;
+      if (isInput) return false;
       e.preventDefault();
       navigateForward();
-      return;
+      return true;
     }
     if (e.key === 'ArrowUp') {
-      if (isInput) return;
+      if (isInput) return false;
       e.preventDefault();
       navigateTo(0);
-      return;
+      return true;
     }
     if (e.key === 'ArrowDown') {
-      if (isInput) return;
+      if (isInput) return false;
       e.preventDefault();
       navigateTo(getMoveHistory().length);
-      return;
+      return true;
     }
 
-    // All other hotkeys suppressed when typing or modal is open
-    if (isInput || isAnyModalOpen()) return;
+    if (isInput || isAnyModalOpen()) return false;
 
     switch (e.key) {
       case 'n':
         clearLoadedGame();
         currentOpeningName = undefined;
-          newGame(config);
-        break;
+        newGame(config);
+        return true;
       case 'f':
         flipBoard();
         updateExplorerPanel();
-        break;
+        return true;
       case 'l':
         toggleLockCurrentMove();
-        break;
+        return true;
       case 'e':
         document.getElementById('eval-chip')?.click();
-        break;
+        return true;
       case ' ':
         e.preventDefault();
         if (getLoadedGame()) {
           if (isViewingHistory()) {
             navigateForward();
           }
-          // At end of loaded game, space does nothing
         } else if (isViewingHistory()) {
           continueFromHere();
         } else if (getPhase() === 'OUT_OF_BOOK' || getPhase() === 'GAME_OVER') {
           currentOpeningName = undefined;
-              newGame(config);
+          newGame(config);
         } else {
           playAutoMove();
         }
-        break;
+        return true;
       case '1':
-        switchSidebarTab('database');
-        break;
+        switchMode('trainer');
+        return true;
       case '2':
+        switchMode('report');
+        return true;
+      case 'd':
+        switchSidebarTab('database');
+        return true;
+      case 'g':
         switchSidebarTab('personal');
-        break;
+        return true;
       case '?':
         openHelpModal();
-        break;
+        return true;
     }
+    return false;
   });
 
   onViewChange((_index, _total) => {
@@ -333,7 +340,7 @@ function boot(): void {
 
   // Report → trainer navigation
   setReportNavigateCallback((moves, fen, orientation, filters) => {
-    closeReportPage();
+    switchMode('trainer');
     setPersonalFilters(filters);
     setOrientation(orientation);
     replayLine(moves);
@@ -370,24 +377,64 @@ function boot(): void {
   };
 
   initMobileTabs();
-  restoreReportPageIfNeeded();
-}
 
-function restoreReportPageIfNeeded(): void {
-  if (!shouldRestoreReportPage()) return;
+  // ── Nav bar + mode switching ──
+  initModeRouting();
 
-  let attempts = 0;
-  const maxAttempts = 60; // ~3s at 50ms intervals
-  const tryOpen = () => {
-    if (isDBReady() || attempts >= maxAttempts) {
-      openReportPage();
-      return;
+  // Wire nav tab clicks
+  document.querySelectorAll<HTMLButtonElement>('#app-nav .app-nav-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode as 'trainer' | 'report';
+      switchMode(mode);
+    });
+  });
+
+  // Wire nav help button
+  document.getElementById('nav-help-btn')?.addEventListener('click', openHelpModal);
+
+  // Sliding indicator — position the shared underline on the active tab
+  const navIndicator = document.querySelector<HTMLElement>('.app-nav-indicator');
+  function updateNavIndicator(mode: string): void {
+    const tab = document.querySelector<HTMLElement>(`.app-nav-tab[data-mode="${mode}"]`);
+    if (!navIndicator || !tab) return;
+    const tabsRect = tab.parentElement!.getBoundingClientRect();
+    const tabRect = tab.getBoundingClientRect();
+    navIndicator.style.left = `${tabRect.left - tabsRect.left + 8}px`;
+    navIndicator.style.width = `${tabRect.width - 16}px`;
+  }
+  // Set initial position without animation
+  if (navIndicator) navIndicator.style.transition = 'none';
+  updateNavIndicator(getCurrentMode());
+  requestAnimationFrame(() => {
+    if (navIndicator) navIndicator.style.transition = '';
+  });
+
+  onModeChange((mode) => {
+    document.querySelectorAll<HTMLButtonElement>('#app-nav .app-nav-tab').forEach(t =>
+      t.classList.toggle('selected', t.dataset.mode === mode)
+    );
+    updateNavIndicator(mode);
+
+    if (mode === 'report') openReportPage();
+    else closeReportPage();
+
+    if (document.startViewTransition) {
+      const transition = document.startViewTransition(() => applyModeClass(mode));
+      transition.finished.then(() => redrawBoard());
+    } else {
+      applyModeClass(mode);
+      redrawBoard();
     }
-    attempts++;
-    setTimeout(tryOpen, 50);
-  };
+  });
 
-  tryOpen();
+  // Restore report page if hash says #report on initial load
+  if (getCurrentMode() === 'report') {
+    const waitForDB = () => {
+      if (isDBReady()) { openReportPage(); return; }
+      setTimeout(waitForDB, 50);
+    };
+    waitForDB();
+  }
 }
 
 boot();

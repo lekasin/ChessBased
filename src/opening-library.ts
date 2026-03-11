@@ -9,6 +9,7 @@ import { parsePgn, startingPosition, walk, Box } from 'chessops/pgn';
 import type { PgnNodeData } from 'chessops/pgn';
 import type { Position } from 'chessops';
 import { lockMove, positionKey, createOpening, switchOpening } from './repertoire';
+import { pushKeyLayer, popKeyLayer } from './keyboard';
 
 interface OpeningEntry {
   eco: string;
@@ -75,12 +76,11 @@ export function initLibraryModal(onImport: () => void): void {
     renderListArea();
   });
 
-  document.addEventListener('keydown', handleKeydown);
 }
 
-function handleKeydown(e: KeyboardEvent): void {
+function handleLibraryKeydown(e: KeyboardEvent): boolean {
   const modal = document.getElementById('library-modal')!;
-  if (modal.classList.contains('hidden')) return;
+  if (modal.classList.contains('hidden')) return false;
 
   if (e.key === 'Escape') {
     if (detailOpening) {
@@ -89,20 +89,22 @@ function handleKeydown(e: KeyboardEvent): void {
       closeLibraryModal();
     }
     e.preventDefault();
-    return;
+    return true;
   }
 
   if (detailOpening) {
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      e.stopPropagation();
       navigateDetail(-1);
-    } else if (e.key === 'ArrowRight') {
+      return true;
+    }
+    if (e.key === 'ArrowRight') {
       e.preventDefault();
-      e.stopPropagation();
       navigateDetail(1);
+      return true;
     }
   }
+  return false;
 }
 
 export function openLibraryModal(): void {
@@ -123,11 +125,13 @@ export function openLibraryModal(): void {
   document.getElementById('library-detail')!.classList.add('hidden');
   document.getElementById('library-list-area')!.classList.remove('hidden');
 
+  pushKeyLayer('library', handleLibraryKeydown);
   renderListArea();
   requestAnimationFrame(() => searchInput.focus());
 }
 
 export function closeLibraryModal(): void {
+  popKeyLayer('library');
   const overlay = document.getElementById('library-overlay')!;
   const modal = document.getElementById('library-modal')!;
   overlay.classList.remove('visible');

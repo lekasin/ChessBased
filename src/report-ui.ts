@@ -1,9 +1,10 @@
-import { Chessground } from '@lichess-org/chessground';
-import type { Api } from '@lichess-org/chessground/api';
+import { switchMode } from './mode';
 import type { Key } from '@lichess-org/chessground/types';
 import { Chess } from 'chessops/chess';
 import { makeFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
+import { setOrientation, setBoardFen, setViewOnly } from './board';
+import { pushKeyLayer, popKeyLayer } from './keyboard';
 import {
   getPersonalConfig, getPersonalGames, queryPersonalExplorer, hasPersonalData,
   getPersonalStats, getPersonalFilters, setPersonalFilters, queryPersonalMoveGameIndices, refreshChesscomStats,
@@ -37,14 +38,11 @@ export function setReportNavigateCallback(cb: ReportNavigateCallback): void {
 }
 
 let reportOpen = false;
-let reportCg: Api | null = null;
 let savedFilters: PersonalFilters = {};
 let reportFilters: ReportFilters = {};
 let reportCurrentRating: number | null = null;
 let reportCurrentRatingInfo: { timeClass: string; current: number; best: number | null } | null = null;
 let reportRefreshInProgress = false;
-const REPORT_OPEN_SESSION_KEY = 'chessbased-report-open';
-const REPORT_GUIDE_OPEN_KEY = 'chessbased-report-guide-open';
 const CURRENT_RATING_WINDOW = 100;
 const CURRENT_RATING_RANGE = CURRENT_RATING_WINDOW * 2;
 const BAR_PCT_LABEL_ATTR = 'data-pct-label';
@@ -141,7 +139,7 @@ function scheduleReportPctLabelFit(): void {
   reportPctLabelFitRaf = requestAnimationFrame(() => {
     reportPctLabelFitRaf = null;
     const page = document.getElementById('report-page');
-    if (!page || page.classList.contains('hidden')) return;
+    if (!page || !reportOpen) return;
     fitBarPctLabels(page);
     fitMiddleTruncateLabels(page);
   });
@@ -161,7 +159,6 @@ let selectedLine: OpeningLine | null = null;
 let lineViewIndex = 0;           // 0 = starting pos, moves.length = end pos
 let lineFens: string[] = [];     // FEN at each ply (index 0 = starting, length = moves.length + 1)
 let lineLastMoves: (Key[] | undefined)[] = []; // lastMove highlight per ply
-let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 let theoryOverlayEl: HTMLElement | null = null;
 let lineGameResultFilter: 'all' | 'win' | 'draw' | 'loss' = 'all';
 const MAX_PRIORITY_FAMILY_CARDS = 4;
@@ -179,68 +176,59 @@ export function isReportPageOpen(): boolean {
   return reportOpen;
 }
 
-export function shouldRestoreReportPage(): boolean {
-  try {
-    return sessionStorage.getItem(REPORT_OPEN_SESSION_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function persistReportOpenState(open: boolean): void {
-  try {
-    if (open) sessionStorage.setItem(REPORT_OPEN_SESSION_KEY, '1');
-    else sessionStorage.removeItem(REPORT_OPEN_SESSION_KEY);
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-function getReportGuideOpenState(): boolean {
-  try {
-    const raw = localStorage.getItem(REPORT_GUIDE_OPEN_KEY);
-    if (raw == null) return true;
-    return raw === '1';
-  } catch {
-    return true;
-  }
-}
-
-function persistReportGuideOpenState(open: boolean): void {
-  try {
-    localStorage.setItem(REPORT_GUIDE_OPEN_KEY, open ? '1' : '0');
-  } catch {
-    // Ignore storage errors
-  }
-}
 
 export function closeReportPage(): void {
   if (!reportOpen) return;
   reportOpen = false;
-  persistReportOpenState(false);
+  popKeyLayer('report');
   // Restore explorer filters
   setPersonalFilters(savedFilters);
-  const page = document.getElementById('report-page');
-  if (page) {
-    page.classList.add('hidden');
-    page.innerHTML = '';
+  // Clear board column opening label
+  updateBoardColumnOpeningLabel(null);
+  // Restore board interactivity
+  setViewOnly(false);
+  // Don't destroy content — just mark as closed.
+  // The CSS mode classes handle visibility via .trainer-only / .report-only crossfade.
+}
+
+function handleReportKeydown(e: KeyboardEvent): boolean {
+  if (!reportOpen) return false;
+  const tag = (e.target as HTMLElement).tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return false;
+
+  if (e.key === 'Escape' || e.key === '1') {
+    if (e.key === 'Escape' && closeStatsModalIfOpen()) return true;
+    if (e.key === 'Escape' && closeTheoryModalIfOpen()) return true;
+    switchMode('trainer');
+    return true;
   }
-  if (reportCg) {
-    reportCg.destroy();
-    reportCg = null;
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    navigateLine(-1);
+    return true;
   }
-  theoryOverlayEl = null;
-  if (keyHandler) {
-    document.removeEventListener('keydown', keyHandler);
-    keyHandler = null;
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    navigateLine(1);
+    return true;
   }
-  document.getElementById('app')!.style.display = '';
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (selectedLine) { lineViewIndex = 0; updateBoardForLine(); }
+    return true;
+  }
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (selectedLine) { lineViewIndex = lineFens.length - 1; updateBoardForLine(); }
+    return true;
+  }
+  return false;
 }
 
 export async function openReportPage(): Promise<void> {
   if (reportOpen) return;
   reportOpen = true;
-  persistReportOpenState(true);
+  pushKeyLayer('report', handleReportKeydown);
   // Save current explorer filters so we can restore on close
   savedFilters = getPersonalFilters();
   // Initialize report filters from main config speeds
@@ -263,29 +251,36 @@ export async function openReportPage(): Promise<void> {
     maxRating: reportCurrentRating != null ? currentRatingBounds(reportCurrentRating).max : undefined,
   };
 
-  document.getElementById('app')!.style.display = 'none';
+  // Set main board to view-only for report mode
+  setViewOnly(true);
+
+  // CSS mode classes handle layout via .trainer-only / .report-only crossfade.
+  // Always re-render content (data may have changed since last open).
   const page = document.getElementById('report-page')!;
-  page.classList.remove('hidden');
+  const detail = document.getElementById('report-detail')!;
+  const boardControls = document.getElementById('report-board-controls')!;
   page.innerHTML = '';
+  detail.innerHTML = '';
+  boardControls.innerHTML = '';
   ensureReportPctLabelResizeBinding();
 
   const config = explorerConfig;
   const games = getPersonalGames();
 
   if (!hasPersonalData() || !games || !config) {
-    renderEmptyState(page);
+    renderEmptyState(page, detail);
     return;
   }
 
   renderPage(page, games, config.username);
 }
 
-function renderEmptyState(page: HTMLElement): void {
+function renderEmptyState(page: HTMLElement, detail: HTMLElement): void {
+  detail.innerHTML = '';
+  document.getElementById('report-board-controls')!.innerHTML = '';
   page.innerHTML = `
     <div class="report-header">
-      <button class="btn ghost">&larr; Back to trainer</button>
       <span class="report-title">Game Report</span>
-      <span></span>
     </div>
     <div class="report-content">
       <div class="report-empty">
@@ -314,8 +309,6 @@ function renderEmptyState(page: HTMLElement): void {
       </div>
     </div>
   `;
-  page.querySelector('.report-header .btn.ghost')!.addEventListener('click', closeReportPage);
-
   let platform: 'lichess' | 'chesscom' = 'lichess';
   const monthsRow = page.querySelector('#report-import-months')!;
 
@@ -372,6 +365,7 @@ function renderEmptyState(page: HTMLElement): void {
       resultEl.textContent = `Imported ${formatNum(total)} games.`;
       resultEl.className = 'report-import-result success';
       // Re-render the report page with data
+      reportOpen = false;  // Allow openReportPage to re-enter
       setTimeout(() => openReportPage(), 500);
     } catch (e) {
       progressEl.classList.add('hidden');
@@ -511,16 +505,11 @@ function syncExplorerFilters(filters: ReportFilters): void {
 
 function renderPage(page: HTMLElement, allGames: readonly GameMeta[], username: string): void {
   page.innerHTML = '';
-  if (reportCg) {
-    reportCg.destroy();
-    reportCg = null;
-  }
+  const detail = document.getElementById('report-detail')!;
+  detail.innerHTML = '';
 
   // Header
   const header = el('div', 'report-header');
-  const backBtn = el('button', 'btn ghost');
-  backBtn.innerHTML = '&larr; Back to trainer';
-  backBtn.addEventListener('click', closeReportPage);
   const title = el('span', 'report-title');
   title.textContent = 'Game Report';
   const right = el('div', 'report-header-right');
@@ -578,7 +567,7 @@ function renderPage(page: HTMLElement, allGames: readonly GameMeta[], username: 
     }
   });
   right.append(user, refreshBtn, refreshStatus);
-  header.append(backBtn, title, right);
+  header.append(title, right);
   page.append(header);
 
   // Filter bar
@@ -617,35 +606,9 @@ function renderPage(page: HTMLElement, allGames: readonly GameMeta[], username: 
   }, queryPersonalMoveGameIndices, (idx) => allGames[idx], reportFilters.color, 'position');
   // Restore filters without color constraint after report generation
   syncExplorerFilters(reportFilters);
-  renderReportContent(content, report);
+  renderReportContent(content, detail, report);
 
-  // Keyboard listener — remove previous before adding new
-  if (keyHandler) document.removeEventListener('keydown', keyHandler);
-  keyHandler = (e: KeyboardEvent) => {
-    if (!reportOpen) { document.removeEventListener('keydown', keyHandler!); keyHandler = null; return; }
-    const tag = (e.target as HTMLElement).tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-
-    if (e.key === 'Escape') {
-      if (closeTheoryModalIfOpen()) return;
-      closeReportPage();
-      return;
-    }
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      navigateLine(-1);
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      navigateLine(1);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (selectedLine) { lineViewIndex = 0; updateBoardForLine(); }
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (selectedLine) { lineViewIndex = lineFens.length - 1; updateBoardForLine(); }
-    }
-  };
-  document.addEventListener('keydown', keyHandler);
+  // Keyboard is handled by the central dispatcher in main.ts
   scheduleReportPctLabelFit();
 }
 
@@ -962,15 +925,14 @@ function applyFiltersFromBar(bar: HTMLElement): void {
 
 // ── Report Content (below filters) ──
 
-function renderReportContent(content: HTMLElement, report: ReportData): void {
+function renderReportContent(content: HTMLElement, detail: HTMLElement, report: ReportData): void {
   theoryOverlayEl = null;
-  renderReportGuide(content);
   renderTheoryModal(content);
 
-  // Compact overview
-  renderCompactOverview(content, report);
+  // Summary line
+  renderSummaryLine(content, report);
 
-  // Main body: two-column layout for report sections + board
+  // Main body: opening families list (left sidebar only)
   const body = el('div', 'report-body');
   content.append(body);
 
@@ -990,17 +952,15 @@ function renderReportContent(content: HTMLElement, report: ReportData): void {
     mainCol.append(empty);
   }
 
-  // Board column (sticky) — board + nav + games
-  const boardCol = el('div', 'report-board-col');
-  body.append(boardCol);
+  // ── Board column controls (below the board) ──
+  const boardControls = document.getElementById('report-board-controls')!;
+  boardControls.innerHTML = '';
 
+  // ECO label
   const boardEco = el('div', 'report-board-eco placeholder');
   boardEco.textContent = 'Opening: —';
   boardEco.setAttribute('title', 'No opening match for this position');
-  boardCol.append(boardEco);
-
-  const boardWrap = el('div', 'report-board-wrap');
-  boardCol.append(boardWrap);
+  boardControls.append(boardEco);
 
   // Nav controls
   const nav = el('div', 'report-board-nav');
@@ -1025,11 +985,12 @@ function renderReportContent(content: HTMLElement, report: ReportData): void {
   endBtn.addEventListener('click', () => { if (selectedLine) { lineViewIndex = lineFens.length - 1; updateBoardForLine(); } });
 
   nav.append(startBtn, prevBtn, counter, nextBtn, endBtn);
-  boardCol.append(nav);
+  boardControls.append(nav);
 
+  // Move label / placeholder
   const boardLabel = el('div', 'report-board-label');
-  boardLabel.textContent = 'Click an opening to preview';
-  boardCol.append(boardLabel);
+  boardLabel.textContent = 'Select an opening to see details';
+  boardControls.append(boardLabel);
 
   // Open in trainer button
   const trainerBtn = el('button', 'btn btn-primary report-trainer-btn hidden') as HTMLButtonElement;
@@ -1052,31 +1013,15 @@ function renderReportContent(content: HTMLElement, report: ReportData): void {
     };
     reportNavigateCallback(moves, fen, selectedLine.color, filters);
   });
-  boardCol.append(trainerBtn);
+  boardControls.append(trainerBtn);
 
+  // Line games
   const lineGames = el('div', 'report-line-games');
-  boardCol.append(lineGames);
+  boardControls.append(lineGames);
 
-  // Analysis column (sticky) — continuations + diagnostics
-  const analysisCol = el('div', 'report-analysis-col');
-  let analysisScrollTimer = 0;
-  analysisCol.addEventListener('scroll', () => {
-    analysisCol.classList.add('scrolling');
-    clearTimeout(analysisScrollTimer);
-    analysisScrollTimer = window.setTimeout(() => analysisCol.classList.remove('scrolling'), 1000);
-  }, { passive: true });
-  body.append(analysisCol);
-
+  // ── Right sidebar detail panel — continuations only ──
   const continuations = el('div', 'report-continuations');
-  analysisCol.append(continuations);
-
-  // Initialize mini board
-  reportCg = Chessground(boardWrap, {
-    viewOnly: true,
-    coordinates: false,
-    animation: { enabled: true, duration: 150 },
-    drawable: { enabled: false },
-  });
+  detail.append(continuations);
 
   // Reset line state
   selectedLine = null;
@@ -1089,7 +1034,26 @@ function renderReportContent(content: HTMLElement, report: ReportData): void {
   renderSelectedLineGames();
 }
 
-function renderCompactOverview(parent: HTMLElement, report: ReportData): void {
+function renderSummaryLine(parent: HTMLElement, report: ReportData): void {
+  const line = el('div', 'report-summary-line');
+  const parts: string[] = [
+    `${formatNum(report.totalGames)} games`,
+    `${report.overallWinRate}% win`,
+  ];
+  if (reportCurrentRatingInfo) {
+    parts.push(`${reportCurrentRatingInfo.current} ${capitalize(reportCurrentRatingInfo.timeClass)}`);
+  }
+  line.textContent = parts.join('  ·  ');
+
+  const detailsBtn = el('button', 'btn sm ghost report-stats-toggle') as HTMLButtonElement;
+  detailsBtn.textContent = 'Stats';
+  detailsBtn.addEventListener('click', () => openStatsModal(report));
+  line.append(detailsBtn);
+
+  parent.append(line);
+}
+
+function buildCompactOverview(report: ReportData): HTMLElement {
   const wrap = el('section', 'report-overview');
 
   const stats = [
@@ -1176,43 +1140,50 @@ function renderCompactOverview(parent: HTMLElement, report: ReportData): void {
     wrap.append(details);
   }
 
-  parent.append(wrap);
+  return wrap;
 }
 
-// ── Guide ──
+let statsOverlayEl: HTMLElement | null = null;
 
-function renderReportGuide(parent: HTMLElement): void {
-  const details = document.createElement('details');
-  details.className = 'report-guide';
-  details.open = getReportGuideOpenState();
-  details.addEventListener('toggle', () => {
-    persistReportGuideOpenState(details.open);
-  });
+function openStatsModal(report: ReportData): void {
+  if (statsOverlayEl) { closeStatsModal(); return; }
 
-  const summary = document.createElement('summary');
-  summary.textContent = 'How to read this report';
-  details.append(summary);
+  const overlay = el('div', 'report-stats-overlay');
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeStatsModal(); });
 
-  const body = el('div', 'report-guide-body');
-  body.innerHTML = `
-    <p><b>Goal:</b> find the openings that cost you the most points, then train the weakest continuations first.</p>
-    <ol>
-      <li>Start with <b>Priority weaknesses</b> and highest <b>Priority</b>.</li>
-      <li>Use <b>Preview</b> to inspect the line and continuations.</li>
-      <li>Use <b>Line diagnostics</b> to spot critical drops and dangerous opponent replies.</li>
-      <li>Use <b>Open in trainer</b> from board preview to continue training from that line.</li>
-      <li>Use <b>Win%</b> and <b>~Elo Δ</b> for quick performance read.</li>
-      <li>Use tooltip basis details (gap, games, CI) to judge reliability.</li>
-    </ol>
-  `;
-  const actions = el('div', 'report-guide-actions');
-  const theoryBtn = el('button', 'btn sm ghost') as HTMLButtonElement;
-  theoryBtn.textContent = 'Theory & methodology';
-  theoryBtn.addEventListener('click', openTheoryModal);
-  actions.append(theoryBtn);
-  body.append(actions);
-  details.append(body);
-  parent.append(details);
+  const modal = el('div', 'report-stats-modal');
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+
+  const header = el('div', 'report-stats-modal-header');
+  const title = el('div', 'report-stats-modal-title');
+  title.textContent = 'Game Statistics';
+  const closeBtn = el('button', 'btn icon ghost') as HTMLButtonElement;
+  closeBtn.innerHTML = '&times;';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.addEventListener('click', closeStatsModal);
+  header.append(title, closeBtn);
+
+  const body = el('div', 'report-stats-modal-body');
+  body.append(buildCompactOverview(report));
+
+  modal.append(header, body);
+  overlay.append(modal);
+  document.body.append(overlay);
+  statsOverlayEl = overlay;
+  scheduleReportPctLabelFit();
+}
+
+function closeStatsModal(): void {
+  if (!statsOverlayEl) return;
+  statsOverlayEl.remove();
+  statsOverlayEl = null;
+}
+
+function closeStatsModalIfOpen(): boolean {
+  if (!statsOverlayEl) return false;
+  closeStatsModal();
+  return true;
 }
 
 function renderTheoryModal(parent: HTMLElement): void {
@@ -2137,10 +2108,8 @@ function selectLine(line: OpeningLine): void {
   lineViewIndex = line.ucis.length; // start at the end
   lineGameResultFilter = 'all';
 
-  // Orient board to match the opening color
-  if (reportCg) {
-    reportCg.set({ orientation: line.color });
-  }
+  // Orient main board to match the opening color
+  setOrientation(line.color);
 
   // Compute FENs for each ply
   lineFens = [];
@@ -2169,12 +2138,12 @@ function navigateLine(delta: number): void {
 }
 
 function updateBoardForLine(): void {
-  if (!reportCg || !selectedLine) return;
+  if (!selectedLine) return;
 
   const fen = lineFens[lineViewIndex];
   updateReportBoardEcoLabel(fen);
-  const lastMove = lineLastMoves[lineViewIndex];
-  reportCg.set({ fen, lastMove });
+  const lastMove = lineLastMoves[lineViewIndex] as [Key, Key] | undefined;
+  setBoardFen(fen, lastMove);
 
   // Update move label under board
   const labelEl = document.querySelector('.report-board-label');
@@ -2233,6 +2202,7 @@ function updateReportBoardEcoLabel(fen: string | null): void {
     ecoEl.classList.add('placeholder');
     ecoEl.setAttribute('title', 'No opening match for this position');
     scheduleReportPctLabelFit();
+    updateBoardColumnOpeningLabel(null);
     return;
   }
 
@@ -2242,6 +2212,7 @@ function updateReportBoardEcoLabel(fen: string | null): void {
     ecoEl.classList.add('placeholder');
     ecoEl.setAttribute('title', 'No opening match for this position');
     scheduleReportPctLabelFit();
+    updateBoardColumnOpeningLabel(null);
     return;
   }
 
@@ -2249,6 +2220,17 @@ function updateReportBoardEcoLabel(fen: string | null): void {
   ecoEl.classList.remove('placeholder');
   ecoEl.setAttribute('title', opening.name);
   scheduleReportPctLabelFit();
+  updateBoardColumnOpeningLabel(opening);
+}
+
+function updateBoardColumnOpeningLabel(opening: { eco: string; name: string } | null): void {
+  const label = document.getElementById('board-opening-label');
+  if (!label) return;
+  if (!opening) {
+    label.innerHTML = '';
+    return;
+  }
+  label.innerHTML = `<span class="board-opening-eco">${opening.eco}</span>${opening.name}`;
 }
 
 // ── Continuations ──

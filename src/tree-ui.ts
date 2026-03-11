@@ -2,6 +2,7 @@ import { buildRepertoireTree, type TreeNode } from './tree';
 import { getActiveOpening, FREE_PLAY_NAME } from './repertoire';
 import { hierarchy, tree as d3Tree } from 'd3-hierarchy';
 import type { LineEntry } from './history-tree';
+import { pushKeyLayer, popKeyLayer } from './keyboard';
 
 type NavigateCallback = (fen: string, line: LineEntry[]) => void;
 
@@ -61,6 +62,7 @@ function openTreeModal(roots: SubwayNode[], title: string): void {
   document.body.appendChild(overlay);
 
   const close = (): void => {
+    popKeyLayer('tree-modal');
     overlay.remove();
   };
 
@@ -87,14 +89,13 @@ function openTreeModal(roots: SubwayNode[], title: string): void {
     }
   });
 
-  // Close on Escape
-  const onKeyDown = (e: KeyboardEvent): void => {
+  pushKeyLayer('tree-modal', (e) => {
     if (e.key === 'Escape') {
       close();
-      document.removeEventListener('keydown', onKeyDown);
+      return true;
     }
-  };
-  document.addEventListener('keydown', onKeyDown);
+    return false;
+  });
 }
 
 function buildLineForFen(fen: string): LineEntry[] {
