@@ -29,9 +29,8 @@ import {
   queryPersonalExplorer, clearPersonalData, importFromLichess, importFromChesscom,
   initPersonalExplorer, getPersonalStats, setPersonalFilters, getPersonalFilters,
   getFilteredGameCount, getPersonalGames, gameMatchesFilters, isDBReady,
-  type ExplorerMode, type Platform, type LichessFilters, type GameMeta,
+  type ExplorerMode, type Platform, type GameMeta,
 } from './personal-explorer';
-import { openReportPage, isReportPageOpen } from './report-ui';
 import { confirmModal, type ConfirmButton } from './confirm';
 import { openPersonalImportModal } from './ui-modals';
 // Circular imports from ui.ts - these work in ESM since they're only used inside function bodies
@@ -1293,6 +1292,49 @@ function updateRecentGamesPanel(): void {
   const hasData = isDBReady() && hasPersonalData();
   const sectionHeader = document.getElementById('games-section-header');
 
+  // Update topbar user identity
+  const navIdentity = document.getElementById('nav-user-identity');
+  if (navIdentity) {
+    if (hasData) {
+      const cfg = getPersonalConfig()!;
+      navIdentity.classList.remove('hidden');
+      const nameEl = navIdentity.querySelector('.nav-user-name');
+      const countEl = navIdentity.querySelector('.nav-user-count');
+      if (nameEl) nameEl.textContent = cfg.username;
+      if (countEl) countEl.textContent = `· ${formatGames(cfg.gameCount)}`;
+
+      // Wire refresh button (only once)
+      const refreshBtn = navIdentity.querySelector<HTMLButtonElement>('[data-action="refresh"]');
+      if (refreshBtn && !refreshBtn.dataset.wired) {
+        refreshBtn.dataset.wired = '1';
+        refreshBtn.addEventListener('click', () => refreshRecentGames(refreshBtn));
+      }
+
+      // Wire clear button (only once)
+      const clearBtn = navIdentity.querySelector<HTMLButtonElement>('[data-action="clear"]');
+      if (clearBtn && !clearBtn.dataset.wired) {
+        clearBtn.dataset.wired = '1';
+        clearBtn.addEventListener('click', async () => {
+          const result = await confirmModal({
+            title: 'Clear imported games?',
+            message: 'This will remove all imported game data. You can re-import at any time.',
+            buttons: [{ label: 'Clear', value: 'clear', style: 'danger' }],
+            danger: true,
+            anchor: clearBtn,
+          });
+          if (result !== 'clear') return;
+          await clearPersonalData();
+          explorerFiltersOpen = false;
+          recentGamesFiltersOpen = false;
+          updateExplorerPanel();
+          updateRecentGamesPanel();
+        });
+      }
+    } else {
+      navIdentity.classList.add('hidden');
+    }
+  }
+
   // Show/hide sidebar tabs based on whether personal data exists
   const sidebarTabs = document.getElementById('sidebar-tabs');
   if (sidebarTabs) {
@@ -1308,6 +1350,7 @@ function updateRecentGamesPanel(): void {
     // Reset header to static "Games"
     if (sectionHeader) {
       sectionHeader.className = 'sidebar-section-header';
+      sectionHeader.style.display = '';
       sectionHeader.innerHTML = 'Games';
     }
     gamesSection?.classList.remove('games-card');
@@ -1330,52 +1373,11 @@ function updateRecentGamesPanel(): void {
     return;
   }
 
-  // Row 1: Identity header — username + game count + refresh/clear actions
-  const cfg = getPersonalConfig()!;
-  const total = cfg.gameCount;
-
-  gamesSection?.classList.add('games-card');
-
+  // Hide the section header — label lives inside the filter row
   if (sectionHeader) {
-    sectionHeader.className = 'games-identity-row';
-    const nameSpan = `<span class="games-identity-name">${cfg.username}</span>`;
-    const countSpan = `<span class="games-identity-count">&middot; ${formatGames(total)} games</span>`;
-    const refreshSvg = `<svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>`;
-    const clearSvg = `<svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
-    sectionHeader.innerHTML =
-      `<span class="games-identity-text">${nameSpan} ${countSpan}</span>` +
-      `<span class="games-identity-actions">` +
-      `<button class="games-identity-action" data-action="refresh" title="Refresh games">${refreshSvg}</button>` +
-      `<button class="games-identity-action" data-action="clear" title="Clear imported games">${clearSvg}</button>` +
-      `</span>`;
-
-    const refreshBtn = sectionHeader.querySelector<HTMLButtonElement>('[data-action="refresh"]')!;
-    refreshBtn.addEventListener('click', () => refreshRecentGames(refreshBtn));
-
-    const clearBtn = sectionHeader.querySelector<HTMLButtonElement>('[data-action="clear"]')!;
-    clearBtn.addEventListener('click', async () => {
-      const result = await confirmModal({
-        title: 'Clear imported games?',
-        message: 'This will remove all imported game data. You can re-import at any time.',
-        buttons: [{ label: 'Clear', value: 'clear', style: 'danger' }],
-        danger: true,
-        anchor: clearBtn,
-      });
-      if (result !== 'clear') return;
-      await clearPersonalData();
-      explorerFiltersOpen = false;
-      recentGamesFiltersOpen = false;
-      updateExplorerPanel();
-      updateRecentGamesPanel();
-    });
+    sectionHeader.className = 'sidebar-section-header';
+    sectionHeader.style.display = 'none';
   }
-
-  // Row 2: Report button
-  const reportBtn = document.createElement('button');
-  reportBtn.className = 'btn outline games-report-btn';
-  reportBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg> Games report`;
-  reportBtn.addEventListener('click', () => openReportPage());
-  container.append(reportBtn);
 
   renderRecentGames(container);
 }
@@ -1396,12 +1398,7 @@ async function refreshRecentGames(btn: HTMLButtonElement): Promise<void> {
 
   try {
     if (cfg.platform === 'lichess') {
-      const filters: LichessFilters = {};
-      const speeds = getConfig().speeds;
-      if (speeds.length > 0 && speeds.length < 4) {
-        filters.perfType = speeds;
-      }
-      await importFromLichess(cfg.username, () => {}, undefined, filters);
+      await importFromLichess(cfg.username, () => {});
     } else {
       await importFromChesscom(cfg.username, () => {});
     }
@@ -1425,12 +1422,7 @@ async function refreshExplorerGames(btn: HTMLButtonElement): Promise<void> {
 
   try {
     if (cfg.platform === 'lichess') {
-      const filters: LichessFilters = {};
-      const speeds = getConfig().speeds;
-      if (speeds.length > 0 && speeds.length < 4) {
-        filters.perfType = speeds;
-      }
-      await importFromLichess(cfg.username, () => {}, undefined, filters);
+      await importFromLichess(cfg.username, () => {});
     } else {
       await importFromChesscom(cfg.username, () => {});
     }
@@ -1516,7 +1508,7 @@ function renderRecentGames(container: HTMLElement): void {
   const section = document.createElement('div');
   section.className = 'recent-games';
 
-  // Row 3: Label + filter icon
+  // Filter label + icon row
   const filterRow = document.createElement('div');
   filterRow.className = 'recent-games-filters';
   const filterLabel = document.createElement('span');

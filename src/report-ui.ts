@@ -9,19 +9,22 @@ import {
   getPersonalConfig, getPersonalGames, queryPersonalExplorer, hasPersonalData,
   getPersonalStats, getPersonalFilters, setPersonalFilters, queryPersonalMoveGameIndices, refreshChesscomStats,
   importFromLichess, importFromChesscom,
-  type GameMeta, type LichessFilters, type PersonalConfig, type PersonalFilters,
+  type GameMeta, type PersonalConfig, type PersonalFilters,
 } from './personal-explorer';
 import {
   generateReport,
+  buildTimeControlStats,
+  buildRatingTrends,
   type OpeningFamily,
   type OpeningLine,
   type ReportData,
+  type MonthlyRating,
   type SideFamilyReport,
   type WDL,
 } from './report';
 import { findOpeningByFen } from './opening-index';
 import { loadConfig } from './config';
-import { isMoveLocked } from './repertoire';
+import { isMoveLocked, getLockedMoves } from './repertoire';
 import type { MoveHistoryEntry } from './types';
 
 type ReportNavigateCallback = (
@@ -44,7 +47,8 @@ let savedFilters: PersonalFilters = {};
 let reportFilters: ReportFilters = {};
 let reportCurrentRating: number | null = null;
 let reportCurrentRatingInfo: { timeClass: string; current: number; best: number | null } | null = null;
-let reportRefreshInProgress = false;
+let lastReportData: ReportData | null = null;
+let ratingTrendsByTC: Map<string, MonthlyRating[]> = new Map();
 const CURRENT_RATING_WINDOW = 100;
 const CURRENT_RATING_RANGE = CURRENT_RATING_WINDOW * 2;
 const BAR_PCT_LABEL_ATTR = 'data-pct-label';
@@ -52,6 +56,9 @@ const MIDDLE_TRUNCATE_ATTR = 'data-middle-truncate';
 
 let reportPctLabelFitRaf: number | null = null;
 let reportPctLabelResizeBound = false;
+let filtersExpanded = false;
+
+const TC_ORDER = ['bullet', 'blitz', 'rapid', 'classical'] as const;
 
 function currentRatingBounds(rating: number): { min: number; max: number } {
   const stats = getPersonalStats();
@@ -185,10 +192,10 @@ export function closeReportPage(): void {
   popKeyLayer('report');
   // Restore explorer filters
   setPersonalFilters(savedFilters);
-  // Clear board column opening label
-  updateBoardColumnOpeningLabel(null);
   // Restore board interactivity
   setViewOnly(false);
+  // Hide topbar stats button in trainer mode
+  document.querySelector('.nav-stats-btn')?.classList.add('hidden');
   // Don't destroy content — just mark as closed.
   // The CSS mode classes handle visibility via .trainer-only / .report-only crossfade.
 }
@@ -238,6 +245,7 @@ export async function openReportPage(): Promise<void> {
   const currentGameCount = getPersonalGames()?.length ?? 0;
   if (reportContentBuilt && currentGameCount === lastBuildGameCount) {
     syncExplorerFilters(reportFilters);
+    wireNavStatsButton();
     if (selectedLine) {
       setOrientation(selectedLine.color);
       updateBoardForLine();
@@ -292,9 +300,6 @@ function renderEmptyState(page: HTMLElement, detail: HTMLElement): void {
   detail.innerHTML = '';
   document.getElementById('report-board-controls')!.innerHTML = '';
   page.innerHTML = `
-    <div class="report-header">
-      <span class="report-title">Game Report</span>
-    </div>
     <div class="report-content">
       <div class="report-empty">
         <p>No games imported yet.</p>
@@ -473,26 +478,26 @@ function inferCurrentRatingInfo(
   if (!statsSnapshot) return null;
 
   const ratings = statsSnapshot.timeClassRatings;
-  for (const tc of preferredTimeClasses) {
+
+  // Pick the preferred TC with the highest current rating
+  let best: { timeClass: string; current: number; best: number | null } | null = null;
+  const candidates = preferredTimeClasses.length > 0
+    ? preferredTimeClasses
+    : ['rapid', 'blitz', 'bullet', 'classical', 'daily'];
+  for (const tc of candidates) {
     const mode = ratings[tc as keyof typeof ratings];
     if (mode?.currentRating != null && mode.currentRating > 0) {
-      return {
-        timeClass: tc,
-        current: Math.round(mode.currentRating),
-        best: mode.bestRating != null ? Math.round(mode.bestRating) : null,
-      };
+      const cur = Math.round(mode.currentRating);
+      if (!best || cur > best.current) {
+        best = {
+          timeClass: tc,
+          current: cur,
+          best: mode.bestRating != null ? Math.round(mode.bestRating) : null,
+        };
+      }
     }
   }
-  for (const tc of ['blitz', 'rapid', 'bullet', 'daily', 'classical'] as const) {
-    const mode = ratings[tc];
-    if (mode?.currentRating != null && mode.currentRating > 0) {
-      return {
-        timeClass: tc,
-        current: Math.round(mode.currentRating),
-        best: mode.bestRating != null ? Math.round(mode.bestRating) : null,
-      };
-    }
-  }
+  if (best) return best;
   return null;
 }
 
@@ -521,69 +526,6 @@ function renderPage(page: HTMLElement, allGames: readonly GameMeta[], username: 
   page.innerHTML = '';
   const detail = document.getElementById('report-detail')!;
   detail.innerHTML = '';
-
-  // Header
-  const header = el('div', 'report-header');
-  const title = el('span', 'report-title');
-  title.textContent = 'Game Report';
-  const right = el('div', 'report-header-right');
-  const user = el('span', 'report-username');
-  user.textContent = username;
-  const refreshBtn = el('button', 'btn sm') as HTMLButtonElement;
-  refreshBtn.textContent = reportRefreshInProgress ? 'Refreshing...' : 'Refresh games';
-  refreshBtn.disabled = reportRefreshInProgress;
-  const refreshStatus = el('span', 'report-refresh-status');
-  refreshStatus.textContent = '';
-  refreshBtn.addEventListener('click', async () => {
-    if (reportRefreshInProgress) return;
-    const beforeCount = allGames.length;
-    reportRefreshInProgress = true;
-    refreshBtn.disabled = true;
-    refreshBtn.textContent = 'Refreshing...';
-    refreshStatus.textContent = 'Starting refresh...';
-
-    const onProgress = (msg: string, count: number) => {
-      refreshStatus.textContent = `${msg} (${formatNum(count)} games)`;
-    };
-
-    try {
-      const importedTotal = await refreshImportedGames(onProgress);
-      const appConfig = loadConfig();
-      const updatedConfig = getPersonalConfig();
-      const updatedGames = getPersonalGames();
-      const afterCount = updatedGames?.length ?? importedTotal;
-      const newGames = Math.max(0, afterCount - beforeCount);
-      reportCurrentRatingInfo = inferCurrentRatingInfo(updatedConfig, appConfig.speeds);
-      reportCurrentRating = reportCurrentRatingInfo?.current
-        ?? inferCurrentRating(updatedGames ?? [], appConfig.speeds, updatedConfig);
-      reportRefreshInProgress = false;
-      if (updatedGames && updatedConfig) {
-        renderPage(page, updatedGames, updatedConfig.username);
-        lastBuildGameCount = updatedGames.length;
-      } else {
-        rerender();
-      }
-      const refreshedStatus = document.querySelector('.report-refresh-status');
-      if (refreshedStatus) {
-        refreshedStatus.textContent = newGames > 0
-          ? `Refresh complete: +${formatNum(newGames)} new (${formatNum(afterCount)} total).`
-          : `Refresh complete: no new games (${formatNum(afterCount)} total).`;
-      }
-    } catch (e) {
-      reportRefreshInProgress = false;
-      refreshBtn.disabled = false;
-      refreshBtn.textContent = 'Refresh games';
-      refreshStatus.textContent = e instanceof Error ? e.message : 'Refresh failed';
-      setTimeout(() => {
-        if (refreshStatus.textContent && !reportRefreshInProgress) {
-          refreshStatus.textContent = '';
-        }
-      }, 8000);
-    }
-  });
-  right.append(user, refreshBtn, refreshStatus);
-  header.append(title, right);
-  page.append(header);
 
   // Filter bar
   renderFilterBar(page, allGames, username);
@@ -619,6 +561,9 @@ function renderPage(page: HTMLElement, allGames: readonly GameMeta[], username: 
       color: color ?? undefined,
     });
   }, queryPersonalMoveGameIndices, (idx) => allGames[idx], reportFilters.color, 'position');
+  // Use unfiltered games for time control breakdown and rating trends
+  report.byTimeControl = buildTimeControlStats(allGames);
+  ratingTrendsByTC = buildRatingTrends(allGames);
   // Restore filters without color constraint after report generation
   syncExplorerFilters(reportFilters);
   renderReportContent(content, detail, report);
@@ -642,13 +587,7 @@ async function refreshImportedGames(
   if (!cfg) throw new Error('No import configuration found.');
 
   if (cfg.platform === 'lichess') {
-    const appConfig = loadConfig();
-    const speeds = appConfig.speeds;
-    const filters: LichessFilters = {};
-    if (speeds.length > 0 && speeds.length < 4) {
-      filters.perfType = speeds;
-    }
-    return importFromLichess(cfg.username, onProgress, undefined, filters);
+    return importFromLichess(cfg.username, onProgress);
   }
 
   return importFromChesscom(cfg.username, onProgress);
@@ -656,11 +595,145 @@ async function refreshImportedGames(
 
 // ── Filter Bar ──
 
+/** Compact time-control label: range notation if contiguous, comma-separated otherwise.
+ *  Always shows when there's an explicit selection — these are the most important filter. */
+function compactTimeLabel(selected: string[] | undefined, visible: string[]): string | null {
+  const active = selected && selected.length > 0 ? selected : visible;
+  if (active.length === 0) return null;
+  if (active.length === 1) return capitalize(active[0]);
+
+  // Map to ordered indices
+  const indices = active
+    .map(tc => TC_ORDER.indexOf(tc as typeof TC_ORDER[number]))
+    .filter(i => i >= 0)
+    .sort((a, b) => a - b);
+
+  if (indices.length < 2) return active.map(capitalize).join(', ');
+
+  // Check if contiguous
+  const isContiguous = indices.every((v, i) => i === 0 || v === indices[i - 1] + 1);
+  if (isContiguous) {
+    return `${capitalize(TC_ORDER[indices[0]])} – ${capitalize(TC_ORDER[indices[indices.length - 1]])}`;
+  }
+  return active.map(capitalize).join(', ');
+}
+
+function compactDateLabel(filters: ReportFilters): string | null {
+  if (!filters.sinceDate && !filters.untilDate) return null; // "All time" — don't show
+
+  const stats = getPersonalStats();
+  if (!stats?.maxDate) return null;
+
+  // Replicate the same preset computation used in the filter bar
+  const toYmd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const todayYmd = toYmd(new Date());
+  const rangeEndYmd = stats.maxDate < todayYmd ? stats.maxDate : todayYmd;
+  const [ry, rm, rd] = rangeEndYmd.split('-').map(Number);
+  const rangeEndDate = new Date(ry, rm - 1, rd);
+  const monthsAgo = (n: number) => {
+    const d = new Date(rangeEndDate);
+    d.setMonth(rangeEndDate.getMonth() - n);
+    return toYmd(d);
+  };
+
+  const presets: [string, number][] = [['12m', 12], ['3m', 3], ['1m', 1]];
+  for (const [label, months] of presets) {
+    if (filters.sinceDate === monthsAgo(months) && filters.untilDate === rangeEndYmd) {
+      return `Last ${label}`;
+    }
+  }
+
+  // Custom range
+  const since = filters.sinceDate ?? '…';
+  const until = filters.untilDate ?? '…';
+  return `${since} – ${until}`;
+}
+
+function compactRatingLabel(filters: ReportFilters): string | null {
+  if (filters.minRating == null && filters.maxRating == null) return null;
+  const min = filters.minRating ?? '…';
+  const max = filters.maxRating ?? '…';
+  return `${min}–${max}`;
+}
+
+function renderFilterSummary(
+  container: HTMLElement,
+  allGames: readonly GameMeta[],
+): void {
+  const stats = getPersonalStats();
+  const summary = el('div', 'report-filter-summary');
+
+  const title = el('span', 'report-filter-title');
+  title.textContent = 'Filters';
+  summary.append(title);
+
+  const pills: string[] = [];
+  const visibleTC = stats ? stats.timeClasses.filter(tc => tc !== 'unknown') : [];
+  const tcLabel = compactTimeLabel(reportFilters.timeClasses, visibleTC);
+  if (tcLabel) pills.push(tcLabel);
+
+  const ratingLabel = compactRatingLabel(reportFilters);
+  if (ratingLabel) pills.push(ratingLabel);
+
+  const dateLabel = compactDateLabel(reportFilters);
+  if (dateLabel) pills.push(dateLabel);
+
+  const sideLabel = reportFilters.color ? capitalize(reportFilters.color) : null;
+  if (sideLabel) pills.push(sideLabel);
+
+  const pillsWrap = el('div', 'report-filter-pills');
+  if (pills.length === 0) {
+    const allLabel = el('span', 'report-filter-pill muted');
+    allLabel.textContent = 'All games';
+    pillsWrap.append(allLabel);
+  } else {
+    for (const p of pills) {
+      const pill = el('span', 'report-filter-pill');
+      pill.textContent = p;
+      pillsWrap.append(pill);
+    }
+  }
+  summary.append(pillsWrap);
+
+  const toggle = el('button', 'btn icon');
+  toggle.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>`;
+  toggle.title = 'Edit filters';
+  toggle.addEventListener('click', () => {
+    filtersExpanded = true;
+    rerender();
+  });
+  summary.append(toggle);
+
+  container.append(summary);
+}
+
 function renderFilterBar(page: HTMLElement, allGames: readonly GameMeta[], _username: string): void {
   const stats = getPersonalStats();
   if (!stats) return;
 
-  const bar = el('div', 'report-filter-bar');
+  const wrapper = el('div', 'report-filter-wrapper');
+  renderFilterSummary(wrapper, allGames);
+
+  if (filtersExpanded) {
+    // Backdrop to close on outside click
+    const backdrop = el('div', 'report-filter-backdrop');
+    backdrop.addEventListener('click', () => {
+      filtersExpanded = false;
+      rerender();
+    });
+    wrapper.append(backdrop);
+
+    const popover = el('div', 'report-filter-popover');
+    const bar = el('div', 'report-filter-bar');
+    popover.append(bar);
+    wrapper.append(popover);
+  }
+
+  page.append(wrapper);
+  if (!filtersExpanded) return;
+
+  // bar is inside popover — grab it back for building
+  const bar = wrapper.querySelector('.report-filter-bar') as HTMLElement;
 
   // Time control chips
   const visibleTimeClasses = stats.timeClasses.filter(tc => tc !== 'unknown');
@@ -901,13 +974,10 @@ function renderFilterBar(page: HTMLElement, allGames: readonly GameMeta[], _user
     bar.append(group);
   }
 
-  // Game count indicator
-  const filtered = filterGames(allGames, reportFilters);
-  if (hasActiveFilters(reportFilters)) {
-    const count = el('span', 'report-filter-count');
-    count.textContent = `${formatNum(filtered.length)} / ${formatNum(allGames.length)} games`;
-    bar.append(count);
+  // Action buttons (right-aligned)
+  const actions = el('div', 'report-filter-actions');
 
+  if (hasActiveFilters(reportFilters)) {
     const resetBtn = el('button', 'btn sm ghost');
     resetBtn.textContent = 'Reset';
     resetBtn.addEventListener('click', () => {
@@ -919,10 +989,18 @@ function renderFilterBar(page: HTMLElement, allGames: readonly GameMeta[], _user
       };
       rerender();
     });
-    bar.append(resetBtn);
+    actions.append(resetBtn);
   }
 
-  page.append(bar);
+  const doneBtn = el('button', 'btn sm') as HTMLButtonElement;
+  doneBtn.textContent = 'Done';
+  doneBtn.addEventListener('click', () => {
+    filtersExpanded = false;
+    rerender();
+  });
+  actions.append(doneBtn);
+
+  bar.append(actions);
 }
 
 function applyFiltersFromBar(bar: HTMLElement): void {
@@ -941,6 +1019,8 @@ function applyFiltersFromBar(bar: HTMLElement): void {
 // ── Report Content (below filters) ──
 
 function renderReportContent(content: HTMLElement, detail: HTMLElement, report: ReportData): void {
+  lastReportData = report;
+  wireNavStatsButton();
   theoryOverlayEl = null;
   renderTheoryModal(content);
 
@@ -971,12 +1051,6 @@ function renderReportContent(content: HTMLElement, detail: HTMLElement, report: 
   const boardControls = document.getElementById('report-board-controls')!;
   boardControls.innerHTML = '';
 
-  // ECO label
-  const boardEco = el('div', 'report-board-eco placeholder');
-  boardEco.textContent = 'Opening: —';
-  boardEco.setAttribute('title', 'No opening match for this position');
-  boardControls.append(boardEco);
-
   // Nav controls
   const nav = el('div', 'report-board-nav');
 
@@ -1002,11 +1076,6 @@ function renderReportContent(content: HTMLElement, detail: HTMLElement, report: 
   nav.append(startBtn, prevBtn, counter, nextBtn, endBtn);
   boardControls.append(nav);
 
-  // Move label / placeholder
-  const boardLabel = el('div', 'report-board-label');
-  boardLabel.textContent = 'Select an opening to see details';
-  boardControls.append(boardLabel);
-
   // Open in trainer button
   const trainerBtn = el('button', 'btn btn-primary report-trainer-btn hidden') as HTMLButtonElement;
   trainerBtn.textContent = 'Open in trainer';
@@ -1030,13 +1099,25 @@ function renderReportContent(content: HTMLElement, detail: HTMLElement, report: 
   });
   boardControls.append(trainerBtn);
 
-  // Line games
-  const lineGames = el('div', 'report-line-games');
-  boardControls.append(lineGames);
-
-  // ── Right sidebar detail panel — continuations only ──
+  // ── Right sidebar detail panel ──
+  const detailStatus = el('div', 'report-detail-status');
+  detailStatus.innerHTML =
+    `<div class="opening-name report-detail-opening"></div>` +
+    `<div class="status-row">` +
+      `<span class="turn-indicator report-detail-turn"></span>` +
+      `<span class="move-counter report-detail-move"></span>` +
+    `</div>` +
+    `<div class="rep-depth" data-tooltip="Moves in this line that match your repertoire">` +
+      `<span class="rep-depth-bar report-detail-rep-bar" style="width:0%"></span>` +
+      `<span class="rep-depth-label report-detail-rep-label">No moves yet</span>` +
+    `</div>`;
+  detail.append(detailStatus);
   const continuations = el('div', 'report-continuations');
   detail.append(continuations);
+
+  // Line games (in right sidebar)
+  const lineGames = el('div', 'report-line-games');
+  detail.append(lineGames);
 
   // Reset line state
   selectedLine = null;
@@ -1060,10 +1141,6 @@ function renderSummaryLine(parent: HTMLElement, report: ReportData): void {
   }
   line.textContent = parts.join('  ·  ');
 
-  const detailsBtn = el('button', 'btn sm ghost report-stats-toggle') as HTMLButtonElement;
-  detailsBtn.textContent = 'Stats';
-  detailsBtn.addEventListener('click', () => openStatsModal(report));
-  line.append(detailsBtn);
 
   parent.append(line);
 }
@@ -1071,11 +1148,8 @@ function renderSummaryLine(parent: HTMLElement, report: ReportData): void {
 function buildCompactOverview(report: ReportData): HTMLElement {
   const wrap = el('section', 'report-overview');
 
-  const stats = [
+  const stats: { label: string; value: string }[] = [
     { label: 'Games', value: formatNum(report.totalGames) },
-    { label: 'Win Rate', value: `${report.overallWinRate}%` },
-    { label: 'As White', value: `${winRatePct(report.asWhite)}%` },
-    { label: 'As Black', value: `${winRatePct(report.asBlack)}%` },
   ];
   if (reportCurrentRatingInfo) {
     stats.push({
@@ -1089,6 +1163,11 @@ function buildCompactOverview(report: ReportData): HTMLElement {
       });
     }
   }
+  stats.push(
+    { label: 'Win Rate', value: `${report.overallWinRate}%` },
+    { label: 'As White', value: `${winRatePct(report.asWhite)}%` },
+    { label: 'As Black', value: `${winRatePct(report.asBlack)}%` },
+  );
 
   const statGrid = el('div', 'report-overview-stats');
   if (stats.length === 5) statGrid.classList.add('stats-5');
@@ -1135,27 +1214,27 @@ function buildCompactOverview(report: ReportData): HTMLElement {
     wrap.append(bar);
   }
 
-  const hasTrend = report.ratingTrend.length > 1 && report.ratingTrend.some(r => r.avgRating > 0);
+  const hasTrend = ratingTrendsByTC.size > 0;
   const hasTimeControl = report.byTimeControl.length > 0;
   if (hasTrend || hasTimeControl) {
-    const details = document.createElement('details');
-    details.className = 'report-overview-breakdown';
-
-    const summary = document.createElement('summary');
-    summary.textContent = 'Performance breakdown';
-    details.append(summary);
-
-    const breakdownBody = el('div', 'report-overview-breakdown-body');
     const chartsRow = el('div', 'report-charts-row');
-    breakdownBody.append(chartsRow);
-    if (hasTrend) renderSparkline(chartsRow, report.ratingTrend);
+    if (hasTrend) renderSparkline(chartsRow, ratingTrendsByTC);
     if (hasTimeControl) renderTimeControlTable(chartsRow, report.byTimeControl);
-
-    details.append(breakdownBody);
-    wrap.append(details);
+    wrap.append(chartsRow);
   }
 
   return wrap;
+}
+
+function wireNavStatsButton(): void {
+  const btn = document.querySelector<HTMLButtonElement>('.nav-stats-btn');
+  if (!btn) return;
+  btn.classList.toggle('hidden', !reportOpen || !lastReportData);
+  if (btn.dataset.wired) return;
+  btn.dataset.wired = '1';
+  btn.addEventListener('click', () => {
+    if (lastReportData) openStatsModal(lastReportData);
+  });
 }
 
 let statsOverlayEl: HTMLElement | null = null;
@@ -1425,14 +1504,21 @@ function renderWDLBar(parent: HTMLElement, wdl: WDL): void {
 
 // ── Sparkline ──
 
-function renderSparkline(parent: HTMLElement, trend: { month: string; avgRating: number }[]): void {
+const TC_COLORS: Record<string, string> = {
+  bullet: '#e5a858',
+  blitz: '#e8c44a',
+  rapid: '#56b4e9',
+  classical: '#8dd3c7',
+  daily: '#bc80bd',
+};
+
+function renderSparkline(parent: HTMLElement, trendsByTC: Map<string, MonthlyRating[]>): void {
   const section = el('div', 'report-chart-section');
   const heading = el('div', 'report-section-title');
   heading.textContent = 'Rating Trend';
   section.append(heading);
 
-  const filtered = trend.filter(t => t.avgRating > 0);
-  if (filtered.length < 2) {
+  if (trendsByTC.size === 0) {
     section.append(textEl('div', 'report-chart-empty', 'Not enough data'));
     parent.append(section);
     return;
@@ -1445,42 +1531,90 @@ function renderSparkline(parent: HTMLElement, trend: { month: string; avgRating:
   const plotW = width - padX * 2;
   const plotH = height - padY * 2;
 
-  const ratings = filtered.map(t => t.avgRating);
-  const minR = Math.min(...ratings) - 20;
-  const maxR = Math.max(...ratings) + 20;
+  // Collect all months for shared x-axis
+  const allMonths = new Set<string>();
+  for (const trend of trendsByTC.values()) {
+    for (const t of trend) allMonths.add(t.month);
+  }
+  const months = [...allMonths].sort();
+  const monthIdx = new Map(months.map((m, i) => [m, i]));
+
+  // Global min/max across all TCs
+  let globalMin = Infinity, globalMax = -Infinity;
+  for (const trend of trendsByTC.values()) {
+    for (const t of trend) {
+      if (t.avgRating < globalMin) globalMin = t.avgRating;
+      if (t.avgRating > globalMax) globalMax = t.avgRating;
+    }
+  }
+  const minR = globalMin - 20;
+  const maxR = globalMax + 20;
   const range = maxR - minR || 1;
-
-  const points = filtered.map((t, i) => {
-    const x = padX + (i / (filtered.length - 1)) * plotW;
-    const y = padY + plotH - ((t.avgRating - minR) / range) * plotH;
-    return { x, y, month: t.month, rating: t.avgRating };
-  });
-
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const areaD = pathD + ` L${points[points.length - 1].x.toFixed(1)},${(padY + plotH).toFixed(1)} L${points[0].x.toFixed(1)},${(padY + plotH).toFixed(1)} Z`;
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   svg.setAttribute('class', 'report-sparkline');
 
-  const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  area.setAttribute('d', areaD);
-  area.setAttribute('class', 'sparkline-area');
-  svg.append(area);
+  const xScale = months.length > 1 ? (i: number) => padX + (i / (months.length - 1)) * plotW : () => padX + plotW / 2;
+  const yScale = (rating: number) => padY + plotH - ((rating - minR) / range) * plotH;
 
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  line.setAttribute('d', pathD);
-  line.setAttribute('class', 'sparkline-line');
-  svg.append(line);
+  // Draw each TC line
+  for (const [tc, trend] of trendsByTC) {
+    const color = TC_COLORS[tc] ?? '#999';
+    const points = trend.map(t => ({
+      x: xScale(monthIdx.get(t.month)!),
+      y: yScale(t.avgRating),
+      rating: t.avgRating,
+    }));
 
-  const last = points[points.length - 1];
-  const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  dot.setAttribute('cx', last.x.toFixed(1));
-  dot.setAttribute('cy', last.y.toFixed(1));
-  dot.setAttribute('r', '3');
-  dot.setAttribute('class', 'sparkline-dot');
-  svg.append(dot);
+    // Extend flat line to graph edges if data doesn't cover full range
+    const first = points[0];
+    const last = points[points.length - 1];
+    const xStart = xScale(0);
+    const xEnd = xScale(months.length - 1);
+    if (first.x > xStart) points.unshift({ x: xStart, y: first.y, rating: first.rating });
+    if (last.x < xEnd) points.push({ x: xEnd, y: last.y, rating: last.rating });
 
+    const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+
+    // Area (only for single TC)
+    if (trendsByTC.size === 1) {
+      const areaD = pathD + ` L${points[points.length - 1].x.toFixed(1)},${(padY + plotH).toFixed(1)} L${points[0].x.toFixed(1)},${(padY + plotH).toFixed(1)} Z`;
+      const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      area.setAttribute('d', areaD);
+      area.setAttribute('class', 'sparkline-area');
+      area.setAttribute('fill', color);
+      area.setAttribute('opacity', '0.15');
+      svg.append(area);
+    }
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    line.setAttribute('d', pathD);
+    line.setAttribute('class', 'sparkline-line');
+    line.setAttribute('stroke', color);
+    svg.append(line);
+
+    // End dot + current rating label (on last real data point, not extension)
+    const realLast = trend[trend.length - 1];
+    const lastPt = { x: xScale(monthIdx.get(realLast.month)!), y: yScale(realLast.avgRating) };
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('cx', lastPt.x.toFixed(1));
+    dot.setAttribute('cy', lastPt.y.toFixed(1));
+    dot.setAttribute('r', '3');
+    dot.setAttribute('class', 'sparkline-dot');
+    dot.setAttribute('fill', color);
+    svg.append(dot);
+
+    const curLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    curLabel.setAttribute('x', (lastPt.x + 6).toString());
+    curLabel.setAttribute('y', (lastPt.y + 4).toString());
+    curLabel.setAttribute('class', 'sparkline-current');
+    curLabel.setAttribute('fill', color);
+    curLabel.textContent = realLast.avgRating.toString();
+    svg.append(curLabel);
+  }
+
+  // Axis labels
   const topLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
   topLabel.setAttribute('x', (padX - 4).toString());
   topLabel.setAttribute('y', (padY + 4).toString());
@@ -1495,14 +1629,116 @@ function renderSparkline(parent: HTMLElement, trend: { month: string; avgRating:
   botLabel.textContent = Math.round(minR).toString();
   svg.append(botLabel);
 
-  const curLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  curLabel.setAttribute('x', (last.x + 6).toString());
-  curLabel.setAttribute('y', (last.y + 4).toString());
-  curLabel.setAttribute('class', 'sparkline-current');
-  curLabel.textContent = last.rating.toString();
-  svg.append(curLabel);
+  // Hover interaction — vertical line + tooltip
+  const hoverLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  hoverLine.setAttribute('y1', padY.toString());
+  hoverLine.setAttribute('y2', (padY + plotH).toString());
+  hoverLine.setAttribute('class', 'sparkline-hover-line');
+  hoverLine.style.display = 'none';
+  svg.append(hoverLine);
+
+  const hoverGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  hoverGroup.style.display = 'none';
+  svg.append(hoverGroup);
+
+  // Build lookup: for each TC, map month index → rating (including extensions)
+  const tcByMonth = new Map<string, Map<number, number>>();
+  for (const [tc, trend] of trendsByTC) {
+    const lookup = new Map<number, number>();
+    for (const t of trend) lookup.set(monthIdx.get(t.month)!, t.avgRating);
+    // Fill extended regions
+    const firstIdx = monthIdx.get(trend[0].month)!;
+    const lastIdx = monthIdx.get(trend[trend.length - 1].month)!;
+    for (let i = 0; i < firstIdx; i++) lookup.set(i, trend[0].avgRating);
+    for (let i = lastIdx + 1; i < months.length; i++) lookup.set(i, trend[trend.length - 1].avgRating);
+    tcByMonth.set(tc, lookup);
+  }
+
+  const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  overlay.setAttribute('x', padX.toString());
+  overlay.setAttribute('y', '0');
+  overlay.setAttribute('width', plotW.toString());
+  overlay.setAttribute('height', height.toString());
+  overlay.setAttribute('fill', 'transparent');
+  overlay.style.cursor = 'crosshair';
+  svg.append(overlay);
+
+  overlay.addEventListener('mousemove', (e) => {
+    const rect = svg.getBoundingClientRect();
+    const svgX = ((e.clientX - rect.left) / rect.width) * width;
+    // Snap to nearest month
+    const monthFloat = months.length > 1 ? (svgX - padX) / plotW * (months.length - 1) : 0;
+    const mi = Math.max(0, Math.min(months.length - 1, Math.round(monthFloat)));
+    const x = xScale(mi);
+
+    hoverLine.setAttribute('x1', x.toFixed(1));
+    hoverLine.setAttribute('x2', x.toFixed(1));
+    hoverLine.style.display = '';
+
+    hoverGroup.innerHTML = '';
+    hoverGroup.style.display = '';
+
+    // Dots on lines
+    for (const [tc, lookup] of tcByMonth) {
+      const rating = lookup.get(mi);
+      if (rating == null) continue;
+      const color = TC_COLORS[tc] ?? '#999';
+      const py = yScale(rating);
+      const hDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      hDot.setAttribute('cx', x.toFixed(1));
+      hDot.setAttribute('cy', py.toFixed(1));
+      hDot.setAttribute('r', '3.5');
+      hDot.setAttribute('fill', color);
+      hDot.setAttribute('stroke', 'var(--bg-base)');
+      hDot.setAttribute('stroke-width', '1.5');
+      hoverGroup.append(hDot);
+    }
+
+    // Tooltip card
+    const lines: string[] = [];
+    for (const [tc, lookup] of tcByMonth) {
+      const rating = lookup.get(mi);
+      if (rating == null) continue;
+      const color = TC_COLORS[tc] ?? '#999';
+      const label = trendsByTC.size > 1 ? `<span style="color:${color}">${capitalize(tc)}</span> ${rating}` : `${rating}`;
+      lines.push(label);
+    }
+    const onRight = x < width / 2;
+    const tooltipW = 120;
+    const tx = onRight ? x + 10 : x - tooltipW - 10;
+    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+    fo.setAttribute('x', tx.toFixed(1));
+    fo.setAttribute('y', '0');
+    fo.setAttribute('width', tooltipW.toString());
+    fo.setAttribute('height', height.toString());
+    fo.setAttribute('style', 'overflow: visible');
+    const tip = document.createElement('div');
+    tip.className = 'sparkline-tooltip';
+    tip.innerHTML = `<div class="sparkline-tooltip-month">${months[mi]}</div>${lines.join('<br>')}`;
+    fo.append(tip);
+    hoverGroup.append(fo);
+  });
+
+  overlay.addEventListener('mouseleave', () => {
+    hoverLine.style.display = 'none';
+    hoverGroup.style.display = 'none';
+  });
 
   section.append(svg);
+
+  // Legend (when multiple TCs)
+  if (trendsByTC.size > 1) {
+    const legend = el('div', 'sparkline-legend');
+    for (const tc of trendsByTC.keys()) {
+      const item = el('span', 'sparkline-legend-item');
+      const swatch = el('span', 'sparkline-legend-swatch');
+      swatch.style.background = TC_COLORS[tc] ?? '#999';
+      item.append(swatch, document.createTextNode(capitalize(tc)));
+      legend.append(item);
+    }
+    section.append(legend);
+  }
+
   parent.append(section);
 }
 
@@ -2122,6 +2358,7 @@ function selectLine(line: OpeningLine): void {
   selectedLine = line;
   lineViewIndex = line.ucis.length; // start at the end
   lineGameResultFilter = 'all';
+  lastKnownOpeningName = line.openingName || line.displayLabel;
 
   // Orient main board to match the opening color
   setOrientation(line.color);
@@ -2160,30 +2397,34 @@ function updateBoardForLine(): void {
   const lastMove = lineLastMoves[lineViewIndex] as [Key, Key] | undefined;
   setBoardFen(fen, lastMove);
 
-  // Update move label under board
-  const labelEl = document.querySelector('.report-board-label');
-  if (labelEl) {
-    labelEl.innerHTML = '';
+  // Update move table under board (reuse trainer's #moves element)
+  const movesEl = document.getElementById('moves');
+  if (movesEl) {
     const moves = selectedLine.moves;
-    for (let i = 0; i < moves.length; i++) {
-      // Add move number
-      if (i % 2 === 0) {
-        const num = document.createElement('span');
-        num.className = 'report-line-movenum';
-        num.textContent = `${Math.floor(i / 2) + 1}.`;
-        labelEl.append(num);
-      }
-      const span = document.createElement('span');
-      span.className = 'report-line-move';
-      if (i + 1 === lineViewIndex) span.classList.add('active');
-      span.textContent = moves[i];
-      span.addEventListener('click', () => {
-        lineViewIndex = i + 1;
+    let html = '<div class="move-table">';
+    for (let i = 0; i < moves.length; i += 2) {
+      const moveNum = Math.floor(i / 2) + 1;
+      const white = moves[i];
+      const black = moves[i + 1];
+      const whiteActive = (i + 1) === lineViewIndex ? ' active' : '';
+      const blackActive = black && (i + 2) === lineViewIndex ? ' active' : '';
+      html += `<div class="move-num">${moveNum}.</div>
+        <div class="move-san clickable${whiteActive}" data-vi="${i + 1}">${white}</div>
+        <div class="move-san${black ? ` clickable${blackActive}` : ''}"${black ? ` data-vi="${i + 2}"` : ''}>${black || ''}</div>`;
+    }
+    html += '</div>';
+    movesEl.innerHTML = html;
+
+    movesEl.querySelectorAll('.move-san.clickable').forEach((td) => {
+      td.addEventListener('click', (e) => {
+        const target = e.currentTarget as HTMLElement;
+        lineViewIndex = parseInt(target.dataset.vi!);
         updateBoardForLine();
       });
-      labelEl.append(span);
-      if (i < moves.length - 1) labelEl.append(document.createTextNode(' '));
-    }
+    });
+
+    const activeEl = movesEl.querySelector('.move-san.active') as HTMLElement | null;
+    if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
   }
 
   // Update nav button states
@@ -2202,50 +2443,75 @@ function updateBoardForLine(): void {
     trainerBtn.classList.toggle('hidden', lineViewIndex <= 0 || !reportNavigateCallback);
   }
 
+  // Update status block (turn + rep depth)
+  updateReportDetailStatus();
+
   // Update continuations from this position
   renderContinuations(fen);
 
   renderSelectedLineGames();
 }
 
+let lastKnownOpeningName = 'Starting position';
+
 function updateReportBoardEcoLabel(fen: string | null): void {
-  const ecoEl = document.querySelector('.report-board-eco') as HTMLElement | null;
-  if (!ecoEl) return;
+  const detailOpening = document.querySelector('.report-detail-opening') as HTMLElement | null;
 
   if (!fen) {
-    clearMiddleTruncateText(ecoEl, 'Opening: —');
-    ecoEl.classList.add('placeholder');
-    ecoEl.setAttribute('title', 'No opening match for this position');
+    lastKnownOpeningName = 'Starting position';
+    if (detailOpening) detailOpening.textContent = lastKnownOpeningName;
     scheduleReportPctLabelFit();
-    updateBoardColumnOpeningLabel(null);
     return;
   }
 
   const opening = findOpeningByFen(fen);
-  if (!opening) {
-    clearMiddleTruncateText(ecoEl, 'Opening: —');
-    ecoEl.classList.add('placeholder');
-    ecoEl.setAttribute('title', 'No opening match for this position');
-    scheduleReportPctLabelFit();
-    updateBoardColumnOpeningLabel(null);
-    return;
-  }
-
-  setMiddleTruncateText(ecoEl, opening.name);
-  ecoEl.classList.remove('placeholder');
-  ecoEl.setAttribute('title', opening.name);
+  if (opening) lastKnownOpeningName = opening.name;
+  if (detailOpening) detailOpening.textContent = lastKnownOpeningName;
   scheduleReportPctLabelFit();
-  updateBoardColumnOpeningLabel(opening);
 }
 
-function updateBoardColumnOpeningLabel(opening: { eco: string; name: string } | null): void {
-  const label = document.getElementById('board-opening-label');
-  if (!label) return;
-  if (!opening) {
-    label.innerHTML = '';
+function updateReportDetailStatus(): void {
+  const turnEl = document.querySelector('.report-detail-turn') as HTMLElement | null;
+  const moveEl = document.querySelector('.report-detail-move') as HTMLElement | null;
+  const repBar = document.querySelector('.report-detail-rep-bar') as HTMLElement | null;
+  const repLabel = document.querySelector('.report-detail-rep-label') as HTMLElement | null;
+
+  if (!selectedLine || lineViewIndex <= 0) {
+    // No line selected or at starting position
+    if (turnEl) { turnEl.textContent = ''; turnEl.className = 'turn-indicator report-detail-turn'; }
+    if (moveEl) moveEl.textContent = '';
+    if (repBar) repBar.style.width = '0%';
+    if (repLabel) repLabel.textContent = 'Select an opening to see details';
     return;
   }
-  label.innerHTML = `<span class="board-opening-eco">${opening.eco}</span>${opening.name}`;
+
+  // Turn indicator from FEN
+  const fen = lineFens[lineViewIndex];
+  const turnChar = fen.split(' ')[1];
+  if (turnEl) {
+    turnEl.textContent = turnChar === 'w' ? 'White to move' : 'Black to move';
+    turnEl.className = 'turn-indicator report-detail-turn';
+  }
+
+  // Move counter
+  const moveNum = Math.floor(lineViewIndex / 2) + (lineViewIndex % 2 === 0 ? 0 : 1);
+  if (moveEl) moveEl.textContent = `Move ${moveNum}`;
+
+  // Repertoire depth — count consecutive locked moves from start
+  let repMoves = 0;
+  for (let i = 0; i < selectedLine.moves.length && i < lineViewIndex; i++) {
+    const fenBefore = lineFens[i];
+    const locked = getLockedMoves(fenBefore);
+    if (locked.length > 0 && locked.includes(selectedLine.ucis[i])) {
+      repMoves++;
+    } else {
+      break;
+    }
+  }
+  const total = lineViewIndex;
+  const pct = total > 0 ? Math.round((repMoves / total) * 100) : 0;
+  if (repBar) repBar.style.width = `${pct}%`;
+  if (repLabel) repLabel.textContent = `${repMoves}/${total} moves in repertoire`;
 }
 
 // ── Continuations ──

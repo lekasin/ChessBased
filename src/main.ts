@@ -416,7 +416,7 @@ function boot(): void {
     updateNavIndicator(mode);
 
     if (mode === 'report') openReportPage();
-    else closeReportPage();
+    else { closeReportPage(); updateMoveList(); }
 
     if (document.startViewTransition) {
       const transition = document.startViewTransition(() => applyModeClass(mode));

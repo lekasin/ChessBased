@@ -127,6 +127,44 @@ function addResult(wdl: WDL, result: 'win' | 'draw' | 'loss'): void {
   wdl.total++;
 }
 
+export function buildRatingTrends(games: readonly GameMeta[]): Map<string, MonthlyRating[]> {
+  const tcMonthMap = new Map<string, Map<string, { totalRating: number; count: number }>>();
+  for (const game of games) {
+    if (game.ur <= 0) continue;
+    let monthMap = tcMonthMap.get(game.tc);
+    if (!monthMap) { monthMap = new Map(); tcMonthMap.set(game.tc, monthMap); }
+    const existing = monthMap.get(game.mo);
+    if (existing) { existing.totalRating += game.ur; existing.count++; }
+    else monthMap.set(game.mo, { totalRating: game.ur, count: 1 });
+  }
+  const result = new Map<string, MonthlyRating[]>();
+  const tcKeys = sortTimeClasses([...tcMonthMap.keys()]);
+  for (const tc of tcKeys) {
+    const monthMap = tcMonthMap.get(tc)!;
+    const trend: MonthlyRating[] = [];
+    for (const [month, data] of monthMap) {
+      trend.push({ month, avgRating: Math.round(data.totalRating / data.count), gameCount: data.count });
+    }
+    trend.sort((a, b) => a.month.localeCompare(b.month));
+    if (trend.length >= 2) result.set(tc, trend);
+  }
+  return result;
+}
+
+export function buildTimeControlStats(games: readonly GameMeta[]): TimeControlStats[] {
+  const tcMap = new Map<string, WDL>();
+  for (const game of games) {
+    let wdl = tcMap.get(game.tc);
+    if (!wdl) { wdl = emptyWDL(); tcMap.set(game.tc, wdl); }
+    addResult(wdl, userResult(game));
+  }
+  const stats: TimeControlStats[] = [];
+  for (const [tc, wdl] of tcMap) stats.push({ timeClass: tc, wdl, winRate: winRate(wdl) });
+  const tcOrder = Object.fromEntries(sortTimeClasses([...tcMap.keys()]).map((k, i) => [k, i]));
+  stats.sort((a, b) => (tcOrder[a.timeClass] ?? 99) - (tcOrder[b.timeClass] ?? 99));
+  return stats;
+}
+
 function winRate(wdl: WDL): number {
   if (wdl.total === 0) return 0;
   return Math.round((wdl.wins / wdl.total) * 100);
