@@ -14,10 +14,12 @@ import {
   truncateToView,
   resetBoard,
   setOrientation,
+  getMoveHistory,
 } from './board';
 import { queryExplorer, setRetryListener } from './explorer';
 import { selectBotMove } from './bot';
 import { getExplorerMode, queryPersonalExplorer } from './personal-explorer';
+import { getBestMove, setEngineStrength } from './engine';
 
 function cacheKey(fen: string): string {
   return fen.split(' ').slice(0, 4).join(' ');
@@ -37,10 +39,16 @@ const explorerCache = new Map<string, ExplorerResponse>();
 type PhaseListener = (phase: GamePhase) => void;
 type ExplorerListener = () => void;
 type MoveListener = () => void;
+type UserMoveValidator = (preFen: string, uci: string) => boolean; // return true = move rejected
 
 let onPhaseChange: PhaseListener | null = null;
 let onExplorerUpdate: ExplorerListener | null = null;
 let onMoveUpdate: MoveListener | null = null;
+let userMoveValidator: UserMoveValidator | null = null;
+
+export function setUserMoveValidator(cb: UserMoveValidator | null): void {
+  userMoveValidator = cb;
+}
 
 export function setListeners(
   phaseCb: PhaseListener,
@@ -103,11 +111,44 @@ export function startGame(
   }
 }
 
+export function resumeFromPosition(appConfig: AppConfig): void {
+  config = appConfig;
+  currentExplorerData = null;
+  currentExplorerFen = '';
+  autoMoveInProgress = false;
+  if (engineMode) {
+    setEngineStrength(0);
+    engineMode = false;
+  }
+  explorerCache.clear();
+
+  // Truncate to current view if navigated backwards
+  if (isViewingHistory()) {
+    truncateToView();
+  }
+
+  const boardColor = config.playerColor === 'both' ? 'white' : config.playerColor;
+  setOrientation(boardColor);
+  setPhase('USER_TURN');
+  onMoveUpdate?.();
+  onExplorerUpdate?.();
+
+  if (shouldBotPlay()) {
+    doBotTurn();
+  } else {
+    fetchExplorerForFen(getFen());
+  }
+}
+
 export function newGame(appConfig: AppConfig): void {
   config = appConfig;
   currentExplorerData = null;
   currentExplorerFen = '';
   autoMoveInProgress = false;
+  if (engineMode) {
+    setEngineStrength(0); // restore full strength for eval
+    engineMode = false;
+  }
   explorerCache.clear();
 
   const boardColor = config.playerColor === 'both' ? 'white' : config.playerColor;
@@ -161,8 +202,20 @@ export async function fetchExplorerForFen(fen: string): Promise<ExplorerResponse
   }
 }
 
-async function onUserMove(_entry: MoveHistoryEntry): Promise<void> {
+async function onUserMove(entry: MoveHistoryEntry): Promise<void> {
   onMoveUpdate?.();
+
+  // Strict mode check: validate user move against repertoire (not in engine mode)
+  if (userMoveValidator && !engineMode) {
+    const history = getMoveHistory();
+    const preFen = history.length <= 1
+      ? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+      : history[history.length - 2].fen;
+    if (userMoveValidator(preFen, entry.uci)) {
+      setPhase('GAME_OVER');
+      return;
+    }
+  }
 
   if (isGameOver()) {
     setPhase('GAME_OVER');
@@ -170,10 +223,14 @@ async function onUserMove(_entry: MoveHistoryEntry): Promise<void> {
   }
 
   if (shouldBotPlay()) {
-    await doBotTurn();
+    if (engineMode) {
+      await doEngineBotTurn();
+    } else {
+      await doBotTurn();
+    }
   } else {
     setPhase('USER_TURN');
-    await fetchExplorerForFen(getFen());
+    if (!engineMode) await fetchExplorerForFen(getFen());
   }
 }
 
@@ -219,6 +276,51 @@ async function doBotTurn(): Promise<void> {
 
   setPhase('USER_TURN');
   await fetchExplorerForFen(getFen());
+}
+
+let engineMode = false;
+
+async function doEngineBotTurn(): Promise<void> {
+  const turnId = botTurnId;
+  setPhase('BOT_THINKING');
+
+  const fen = getFen();
+  const bestMove = await getBestMove(fen);
+
+  if (turnId !== botTurnId) return;
+  if (!bestMove) {
+    setPhase('GAME_OVER');
+    return;
+  }
+
+  const delay = 300 + Math.random() * 400;
+  await new Promise((r) => setTimeout(r, delay));
+  if (turnId !== botTurnId) return;
+
+  playBotMove(bestMove);
+  onMoveUpdate?.();
+
+  if (isGameOver()) {
+    setPhase('GAME_OVER');
+    return;
+  }
+
+  setPhase('USER_TURN');
+}
+
+export function continueVsEngine(targetElo?: number): void {
+  engineMode = true;
+  setEngineStrength(targetElo ?? 0);
+  if (shouldBotPlay()) {
+    botTurnId++;
+    doEngineBotTurn();
+  } else {
+    setPhase('USER_TURN');
+  }
+}
+
+export function isEngineMode(): boolean {
+  return engineMode;
 }
 
 export async function playExplorerMove(uci: string): Promise<void> {

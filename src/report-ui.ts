@@ -197,7 +197,7 @@ export function closeReportPage(): void {
   // Hide topbar stats button in trainer mode
   document.querySelector('.nav-stats-btn')?.classList.add('hidden');
   // Don't destroy content — just mark as closed.
-  // The CSS mode classes handle visibility via .trainer-only / .report-only crossfade.
+  // The CSS mode classes handle visibility via .play-only / .explore-only / .report-only crossfade.
 }
 
 function handleReportKeydown(e: KeyboardEvent): boolean {
@@ -205,12 +205,15 @@ function handleReportKeydown(e: KeyboardEvent): boolean {
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return false;
 
-  if (e.key === 'Escape' || e.key === '1') {
-    if (e.key === 'Escape' && closeStatsModalIfOpen()) return true;
-    if (e.key === 'Escape' && closeTheoryModalIfOpen()) return true;
-    switchMode('trainer');
+  if (e.key === 'Escape') {
+    if (closeStatsModalIfOpen()) return true;
+    if (closeTheoryModalIfOpen()) return true;
+    switchMode('explore');
     return true;
   }
+  if (e.key === '1') { switchMode('play'); return true; }
+  if (e.key === '2') { switchMode('explore'); return true; }
+  if (e.key === '3') return true; // already on report
   if (e.key === 'ArrowLeft') {
     e.preventDefault();
     navigateLine(-1);

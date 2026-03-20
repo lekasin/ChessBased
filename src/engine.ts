@@ -268,6 +268,41 @@ export async function evaluate(fen: string, onUpdate: EvalCallback, onLines?: Li
   await startSearch(fen, onUpdate);
 }
 
+/** Set engine strength via UCI_LimitStrength + UCI_Elo (1320-3190, or 0 for full strength) */
+export function setEngineStrength(elo: number): void {
+  if (!worker) initEngine();
+  if (elo <= 0) {
+    send('setoption name UCI_LimitStrength value false');
+  } else {
+    const clamped = Math.max(1320, Math.min(3190, elo));
+    send('setoption name UCI_LimitStrength value true');
+    send(`setoption name UCI_Elo value ${clamped}`);
+  }
+}
+
+/** Run a search and return the best move UCI string */
+export async function getBestMove(fen: string): Promise<string | null> {
+  if (!worker) initEngine();
+
+  // Stop any running search and clear queue so we get a clean slot
+  if (searching) {
+    queued = null;
+    await stopCurrent();
+  }
+
+  // Now idle — run a fresh search and capture best move from PV
+  let bestMove: string | null = null;
+  pendingLinesCallback = (lines) => {
+    if (lines.length > 0 && lines[0].pv.length > 0) {
+      bestMove = lines[0].pv[0];
+    }
+  };
+
+  await startSearch(fen, () => {});
+  await idle.promise; // wait for search to actually finish
+  return bestMove;
+}
+
 /** Convert eval score to white's winning chance 0..1 (0.5 = equal) */
 export function winningChance(score: EvalScore): number {
   if (score.type === 'mate') {

@@ -150,8 +150,9 @@ function syncBoard(): void {
 
   const turnColor = chess.turn === 'white' ? 'white' : 'black';
 
+  const currentFen = makeFen(chess.toSetup());
   cg.set({
-    fen: makeFen(chess.toSetup()),
+    fen: currentFen,
     turnColor,
     movable: {
       color: 'both',
@@ -171,6 +172,11 @@ export function getFen(): string {
 export function isGameOver(): boolean {
   if (!state) return false;
   return state.chess.isEnd();
+}
+
+export function isCheckmate(): boolean {
+  if (!state) return false;
+  return state.chess.isCheckmate();
 }
 
 export function getTurn(): 'white' | 'black' {
@@ -287,8 +293,9 @@ export function resetBoard(playerColor: 'white' | 'black'): void {
   state.moveHistory = [];
   viewIndex = 0;
 
+  const resetFen = makeFen(chess.toSetup());
   state.cg.set({
-    fen: makeFen(chess.toSetup()),
+    fen: resetFen,
     orientation: playerColor,
     turnColor: 'white',
     lastMove: undefined,

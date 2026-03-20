@@ -1,6 +1,6 @@
 import type {
   AppConfig,
-  BotWeighting,
+
   ExplorerMove,
   ExplorerResponse,
   GamePhase,
@@ -10,6 +10,7 @@ import type {
   PositionAnalysis,
 } from './types';
 import { RATING_OPTIONS, SPEED_OPTIONS } from './types';
+import { createRangeBar } from './range-bar';
 import type { Key } from '@lichess-org/chessground/types';
 import { getMoveHistory, getViewIndex, isViewingHistory, setAutoShapes, getOrientation, setOrientation, replayLine } from './board';
 import { isMoveLocked, lockMove, unlockMove, getLockedMoves } from './repertoire';
@@ -940,6 +941,83 @@ function closeAllDropdowns(): void {
   document.querySelectorAll('.engine-lines-config').forEach(p => p.classList.add('hidden'));
 }
 
+let cogPopover: HTMLElement | null = null;
+
+function getOrCreateCogPopover(): HTMLElement {
+  if (cogPopover) return cogPopover;
+
+  const popover = document.createElement('div');
+  popover.className = 'explorer-cog-popover hidden';
+  popover.addEventListener('click', (e) => e.stopPropagation());
+
+  // Rating range bar
+  const ratingsLabel = document.createElement('label');
+  ratingsLabel.className = 'cog-popover-label';
+  ratingsLabel.textContent = 'Ratings';
+  const ratingsBar = createRangeBar({
+    options: RATING_OPTIONS.map(r => ({ value: r, label: String(r) })),
+    initial: getConfig().ratings,
+    onChange: (ratings) => { getConfig().ratings = ratings; dispatchConfigChange(getConfig()); },
+  });
+
+  // Time control range bar
+  const speedsLabel = document.createElement('label');
+  speedsLabel.className = 'cog-popover-label';
+  speedsLabel.textContent = 'Time controls';
+  const speedsBar = createRangeBar({
+    options: SPEED_OPTIONS.map(s => {
+      const labels: Record<string, string> = { ultraBullet: 'Ultra', classical: 'Classic', correspondence: 'Corr' };
+      return { value: s, label: labels[s] ?? s.charAt(0).toUpperCase() + s.slice(1) };
+    }),
+    initial: getConfig().speeds,
+    onChange: (speeds) => { getConfig().speeds = speeds; dispatchConfigChange(getConfig()); },
+  });
+
+  const divider = document.createElement('hr');
+  divider.className = 'cog-popover-divider';
+
+  // Lichess API token (collapsed by default)
+  const tokenToggle = document.createElement('button');
+  tokenToggle.className = 'token-toggle';
+  tokenToggle.textContent = getConfig().lichessToken ? 'Custom token \u2713' : 'Use own Lichess token';
+  const tokenSection = document.createElement('div');
+  tokenSection.className = 'token-section hidden';
+  const tokenWrap = document.createElement('div');
+  tokenWrap.className = 'token-input-wrap';
+  const tokenInput = document.createElement('input');
+  tokenInput.type = 'password';
+  tokenInput.className = 'token-input';
+  tokenInput.placeholder = 'lip_...';
+  tokenInput.value = getConfig().lichessToken || '';
+  tokenInput.spellcheck = false;
+  tokenInput.autocomplete = 'off';
+  tokenInput.addEventListener('change', () => {
+    const val = tokenInput.value.trim();
+    getConfig().lichessToken = val;
+    tokenToggle.textContent = val ? 'Custom token \u2713' : 'Use own Lichess token';
+    dispatchConfigChange(getConfig());
+  });
+  tokenWrap.append(tokenInput);
+  const tokenHint = document.createElement('a');
+  tokenHint.className = 'token-hint';
+  tokenHint.href = 'https://lichess.org/account/oauth/token/create';
+  tokenHint.target = '_blank';
+  tokenHint.rel = 'noopener';
+  tokenHint.textContent = 'Create token (no scopes needed)';
+  tokenSection.append(tokenWrap, tokenHint);
+  tokenToggle.addEventListener('click', () => {
+    tokenSection.classList.toggle('hidden');
+  });
+
+  popover.append(ratingsLabel, ratingsBar, speedsLabel, speedsBar, divider, tokenToggle, tokenSection);
+
+  // Mount in #tab-explorer — outside #explorer-moves, so it never gets destroyed by re-renders
+  document.getElementById('tab-explorer')!.append(popover);
+
+  cogPopover = popover;
+  return popover;
+}
+
 function updateExplorerPanel(): void {
   const el = document.getElementById('explorer-moves')!;
   el.innerHTML = '';
@@ -1035,7 +1113,7 @@ function updateExplorerPanel(): void {
     infoBar.innerHTML += `<span class="database-game-count">${formatGames(totalGames)}</span>`;
   }
 
-  // Cog icon for bot settings popover
+  // Cog icon — toggles persistent popover
   const cogWrap = document.createElement('div');
   cogWrap.className = 'explorer-cog-wrap';
   const cogBtn = document.createElement('button');
@@ -1043,142 +1121,7 @@ function updateExplorerPanel(): void {
   cogBtn.title = 'Explorer settings';
   cogBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.61 3.61 0 0112 15.6z"/></svg>';
 
-  const popover = document.createElement('div');
-  popover.className = 'explorer-cog-popover hidden';
-  popover.addEventListener('click', (e) => e.stopPropagation());
-
-  // Top moves slider
-  const topNLabel = document.createElement('label');
-  topNLabel.className = 'cog-popover-label';
-  topNLabel.textContent = `Top moves: ${getConfig().topMoves}`;
-  const topNSlider = document.createElement('input');
-  topNSlider.type = 'range';
-  topNSlider.min = '1';
-  topNSlider.max = '10';
-  topNSlider.value = String(getConfig().topMoves);
-  topNSlider.addEventListener('input', () => {
-    getConfig().topMoves = parseInt(topNSlider.value);
-    topNLabel.textContent = `Top moves: ${getConfig().topMoves}`;
-    dispatchConfigChange(getConfig());
-  });
-
-  // Bot min play rate slider
-  const playRateLabel = document.createElement('label');
-  playRateLabel.className = 'cog-popover-label';
-  playRateLabel.textContent = `Min play rate: ${getConfig().botMinPlayRatePct}%`;
-  const playRateSlider = document.createElement('input');
-  playRateSlider.type = 'range';
-  playRateSlider.min = '1';
-  playRateSlider.max = '30';
-  playRateSlider.value = String(getConfig().botMinPlayRatePct);
-  playRateSlider.addEventListener('input', () => {
-    getConfig().botMinPlayRatePct = parseInt(playRateSlider.value);
-    playRateLabel.textContent = `Min play rate: ${getConfig().botMinPlayRatePct}%`;
-    dispatchConfigChange(getConfig());
-  });
-
-  // Bot weighting segment
-  const weightLabel = document.createElement('label');
-  weightLabel.className = 'cog-popover-label';
-  weightLabel.textContent = 'Move selection';
-  const weightSegment = document.createElement('div');
-  weightSegment.className = 'segment-picker segment-sm';
-  for (const opt of [{ value: 'weighted' as BotWeighting, label: 'Weighted' }, { value: 'equal' as BotWeighting, label: 'Equal' }]) {
-    const btn = document.createElement('button');
-    btn.className = `segment-btn${getConfig().botWeighting === opt.value ? ' selected' : ''}`;
-    btn.textContent = opt.label;
-    btn.addEventListener('click', () => {
-      if (getConfig().botWeighting === opt.value) return;
-      getConfig().botWeighting = opt.value;
-      weightSegment.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
-      dispatchConfigChange(getConfig());
-    });
-    weightSegment.append(btn);
-  }
-
-  // Rating chips
-  const ratingsLabel = document.createElement('label');
-  ratingsLabel.className = 'cog-popover-label';
-  ratingsLabel.textContent = 'Ratings';
-  const ratingsGrid = document.createElement('div');
-  ratingsGrid.className = 'chip-grid';
-  for (const r of RATING_OPTIONS) {
-    const chip = document.createElement('button');
-    chip.className = 'chip chip-sm';
-    if (getConfig().ratings.includes(r)) chip.classList.add('selected');
-    chip.textContent = String(r);
-    chip.addEventListener('click', () => {
-      chip.classList.toggle('selected');
-      getConfig().ratings = Array.from(ratingsGrid.querySelectorAll('.chip.selected'))
-        .map(c => Number(c.textContent)).sort((a, b) => a - b);
-      dispatchConfigChange(getConfig());
-    });
-    ratingsGrid.append(chip);
-  }
-
-  // Time control chips
-  const speedsLabel = document.createElement('label');
-  speedsLabel.className = 'cog-popover-label';
-  speedsLabel.textContent = 'Time controls';
-  const speedsGrid = document.createElement('div');
-  speedsGrid.className = 'chip-grid';
-  for (const s of SPEED_OPTIONS) {
-    const chip = document.createElement('button');
-    chip.className = 'chip chip-sm';
-    if (getConfig().speeds.includes(s)) chip.classList.add('selected');
-    chip.textContent = s.charAt(0).toUpperCase() + s.slice(1);
-    chip.dataset.speed = s;
-    chip.addEventListener('click', () => {
-      chip.classList.toggle('selected');
-      getConfig().speeds = Array.from(speedsGrid.querySelectorAll('.chip.selected'))
-        .map(c => (c as HTMLElement).dataset.speed!);
-      dispatchConfigChange(getConfig());
-    });
-    speedsGrid.append(chip);
-  }
-
-  const divider = document.createElement('hr');
-  divider.className = 'cog-popover-divider';
-
-  // Lichess API token (collapsed by default)
-  const tokenToggle = document.createElement('button');
-  tokenToggle.className = 'token-toggle';
-  tokenToggle.textContent = getConfig().lichessToken ? 'Custom token \u2713' : 'Use own Lichess token';
-  const tokenSection = document.createElement('div');
-  tokenSection.className = 'token-section hidden';
-  const tokenWrap = document.createElement('div');
-  tokenWrap.className = 'token-input-wrap';
-  const tokenInput = document.createElement('input');
-  tokenInput.type = 'password';
-  tokenInput.className = 'token-input';
-  tokenInput.placeholder = 'lip_...';
-  tokenInput.value = getConfig().lichessToken || '';
-  tokenInput.spellcheck = false;
-  tokenInput.autocomplete = 'off';
-  tokenInput.addEventListener('change', () => {
-    const val = tokenInput.value.trim();
-    getConfig().lichessToken = val;
-    tokenToggle.textContent = val ? 'Custom token \u2713' : 'Use own Lichess token';
-    dispatchConfigChange(getConfig());
-  });
-  tokenWrap.append(tokenInput);
-  const tokenHint = document.createElement('a');
-  tokenHint.className = 'token-hint';
-  tokenHint.href = 'https://lichess.org/account/oauth/token/create';
-  tokenHint.target = '_blank';
-  tokenHint.rel = 'noopener';
-  tokenHint.textContent = 'Create token (no scopes needed)';
-  tokenSection.append(tokenWrap, tokenHint);
-  tokenToggle.addEventListener('click', () => {
-    tokenSection.classList.toggle('hidden');
-  });
-
-  const divider2 = document.createElement('hr');
-  divider2.className = 'cog-popover-divider';
-
-  popover.append(ratingsLabel, ratingsGrid, speedsLabel, speedsGrid, divider, topNLabel, topNSlider, playRateLabel, playRateSlider, weightLabel, weightSegment, divider2, tokenToggle, tokenSection);
-
+  const popover = getOrCreateCogPopover();
   cogBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     const isOpen = !popover.classList.contains('hidden');
@@ -1187,7 +1130,7 @@ function updateExplorerPanel(): void {
   });
 
   cogWrap.append(cogBtn);
-  infoBar.append(cogWrap, popover);
+  infoBar.append(cogWrap);
   el.append(infoBar);
 
   if (error || !showContent) {
@@ -1263,19 +1206,11 @@ function updateExplorerPanel(): void {
     return;
   }
 
-  const showBadges = getConfig().showMoveBadges && moves.length > 0;
+  const showBadges = moves.length > 0;
   const result = showBadges ? currentAnalysis() : null;
   const analysis = result?.analysis ?? null;
 
-  if (showBadges && analysis) {
-    const legend = document.createElement('div');
-    legend.className = 'badge-legend';
-    legend.innerHTML =
-      '<span class="badge-legend-item"><span class="badge-legend-dot dot-best"></span> Best</span>' +
-      '<span class="badge-legend-item"><span class="badge-legend-dot dot-blunder"></span> Mistake</span>' +
-      '<span class="badge-legend-item"><span class="badge-legend-dot dot-trap"></span> Trap</span>';
-    el.appendChild(legend);
-  }
+
 
   renderMoveRows(moves, fen, analysis, el);
   updateRecentGamesPanel();

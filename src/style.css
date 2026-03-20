@@ -208,6 +208,9 @@ body {
 
 /* ── Report Mode Proportions (base max-widths live in the component rules below) ── */
 /* Report mode proportions */
+/* Play mode: hide left sidebar, center board */
+#app.mode-play #left-sidebar { display: none; }
+
 #app.mode-report #left-sidebar  { max-width: 700px; }
 #app.mode-report #board-column  { max-width: 320px; min-width: var(--board-min-width); }
 #app.mode-report #right-sidebar { max-width: 400px; }
@@ -255,6 +258,11 @@ body {
   }
 }
 
+/* Play mode: hide eval bar (unless game ended) */
+#app.mode-play #eval-bar {
+  display: none;
+}
+
 /* Report mode: eval bar collapses to thin strip */
 #app.mode-report #eval-bar {
   width: 4px;
@@ -265,6 +273,9 @@ body {
 #app.mode-report #eval-label {
   display: none;
 }
+
+/* Play mode: hide controls below board */
+#app.mode-play #board-scroll { display: none; }
 
 /* Report mode: show move list, hide trainer-specific controls */
 #app.mode-report #controls,
@@ -289,8 +300,9 @@ body {
 
 /* ── Content Crossfade ── */
 
-/* Both wrapper types fill their sidebar parent */
-.trainer-only,
+/* Mode content wrappers fill their sidebar parent */
+.play-only,
+.explore-only,
 .report-only {
   display: flex;
   flex-direction: column;
@@ -299,41 +311,31 @@ body {
   min-height: 0;
 }
 
-/* Trainer mode */
-#app.mode-trainer .trainer-only {
-  opacity: 1;
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-#app.mode-trainer .report-only {
+/* Hidden state — shared for all mode wrappers when inactive */
+.mode-hidden {
   opacity: 0;
   pointer-events: none;
   height: 0;
   overflow: hidden;
   flex: 0;
-  padding: 0;
-  gap: 0;
+  padding: 0 !important;
+  gap: 0 !important;
 }
+
+/* Play mode */
+#app.mode-play .play-only { opacity: 1; flex: 1; overflow-y: auto; overflow-x: hidden; }
+#app.mode-play .explore-only { opacity: 0; pointer-events: none; height: 0; overflow: hidden; flex: 0; padding: 0; gap: 0; }
+#app.mode-play .report-only { opacity: 0; pointer-events: none; height: 0; overflow: hidden; flex: 0; padding: 0; gap: 0; }
+
+/* Explore mode */
+#app.mode-explore .play-only { opacity: 0; pointer-events: none; height: 0; overflow: hidden; flex: 0; padding: 0; gap: 0; }
+#app.mode-explore .explore-only { opacity: 1; flex: 1; overflow-y: auto; overflow-x: hidden; }
+#app.mode-explore .report-only { opacity: 0; pointer-events: none; height: 0; overflow: hidden; flex: 0; padding: 0; gap: 0; }
 
 /* Report mode */
-#app.mode-report .trainer-only {
-  opacity: 0;
-  pointer-events: none;
-  height: 0;
-  overflow: hidden;
-  flex: 0;
-  padding: 0;
-  gap: 0;
-}
-
-#app.mode-report .report-only {
-  opacity: 1;
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
+#app.mode-report .play-only { opacity: 0; pointer-events: none; height: 0; overflow: hidden; flex: 0; padding: 0; gap: 0; }
+#app.mode-report .explore-only { opacity: 0; pointer-events: none; height: 0; overflow: hidden; flex: 0; padding: 0; gap: 0; }
+#app.mode-report .report-only { opacity: 1; flex: 1; overflow-y: auto; overflow-x: hidden; }
 
 #app.mode-report #left-sidebar .report-only {
   padding-top: 8px;
@@ -356,6 +358,72 @@ body {
 #board-row {
   display: flex;
   flex-shrink: 0;
+  position: relative;
+}
+
+#board-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(2px);
+  border-radius: var(--radius);
+}
+
+#board-overlay.hidden {
+  display: none;
+}
+
+.board-overlay-card {
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  padding: 28px 36px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  min-width: 220px;
+}
+
+.board-overlay-icon {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.board-overlay-card.danger .board-overlay-icon { color: var(--danger, #eb5757); }
+.board-overlay-card.success .board-overlay-icon { color: var(--opportunity, #27ae60); }
+.board-overlay-card.neutral .board-overlay-icon { color: var(--text-secondary); }
+
+.board-overlay-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.board-overlay-detail {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+
+.board-overlay-detail strong {
+  color: var(--text-primary);
+}
+
+.board-overlay-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.board-overlay-btn {
+  width: 100%;
+  padding: 10px 16px;
 }
 
 #board-scroll {
@@ -440,6 +508,7 @@ body {
 }
 
 #board {
+  position: relative;
   flex: 1;
   min-width: 0;
   aspect-ratio: 1;
@@ -2067,6 +2136,255 @@ cg-board square.selected {
   pointer-events: none;
 }
 
+/* ── Play Panel ── */
+
+#play-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#play-setup.hidden,
+#play-settings.hidden {
+  display: none;
+}
+
+#play-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+}
+
+.play-status {
+  flex-shrink: 0;
+}
+
+.play-moves {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.play-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.play-action-full {
+  flex: 1;
+}
+
+.play-explore-btn {
+  flex-shrink: 0;
+  width: 100%;
+}
+
+#play-board-controls {
+  display: flex;
+  gap: 8px;
+  padding-top: 6px;
+  justify-content: flex-end;
+}
+
+#play-board-controls.hidden {
+  display: none;
+}
+
+.play-board-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.play-toast {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  z-index: 5;
+  white-space: nowrap;
+}
+
+.play-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.play-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.play-section .segment-picker {
+  display: flex;
+}
+
+.play-section .segment-btn {
+  flex: 1;
+}
+
+.play-setting-row .segment-picker {
+  align-self: flex-start;
+}
+
+.play-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.play-select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+
+.play-select:focus {
+  border-color: var(--accent);
+}
+
+.play-btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.play-visible-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.play-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.play-info-btn {
+  color: var(--text-dim);
+  cursor: help;
+  display: flex;
+  align-items: center;
+  transition: color var(--transition-fast);
+}
+
+.play-info-btn:hover {
+  color: var(--text-secondary);
+}
+
+.play-setting-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.play-rating-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.rating-range-bar {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.rating-seg {
+  flex: 1;
+  padding: 5px 0;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+  text-align: center;
+}
+
+.rating-seg:last-child {
+  border-right: none;
+}
+
+.rating-seg:hover:not(.in-range) {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.rating-seg.in-range {
+  background: var(--accent-subtle);
+  color: var(--accent-hover);
+}
+
+.rating-seg.range-start {
+  border-radius: 7px 0 0 7px;
+}
+
+.rating-seg.range-end {
+  border-radius: 0 7px 7px 0;
+}
+
+.rating-seg.range-start.range-end {
+  border-radius: 7px;
+}
+
+.play-slider {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.play-more-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.play-more-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.play-more-settings.hidden {
+  display: none;
+}
+
 /* ── Config Panel ── */
 .config-body {
   margin-top: 10px;
@@ -2613,7 +2931,7 @@ input[type='range']::-moz-range-track {
 
 .explorer-cog-popover {
   position: absolute;
-  top: 100%;
+  top: 36px;
   left: 0;
   right: 0;
   z-index: 100;
@@ -2761,6 +3079,10 @@ input[type='range']::-moz-range-track {
 
 .tab-panel.hidden {
   display: none;
+}
+
+.tab-panel {
+  position: relative;
 }
 
 /* ── Tree Fullscreen Modal ── */

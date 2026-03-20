@@ -4,17 +4,15 @@ import type {
   GamePhase,
   MoveBadge,
   MoveHistoryEntry,
-  PlayerColor,
   PositionAnalysis,
 } from './types';
 import { getMoveHistory, getViewIndex, isViewingHistory, navigateTo, replayLine } from './board';
 import {
   isMoveLocked, lockMove, unlockMove, getLockedMoves,
-  getOpeningNames, getActiveOpening, switchOpening, createOpening, deleteOpening, renameOpening,
-  mergeMultiple,
+  getActiveOpening, createOpening,
   FREE_PLAY_NAME,
-  FULL_REPERTOIRE_NAME,
 } from './repertoire';
+import { createOpeningPicker } from './opening-picker';
 import { initLibraryModal, openLibraryModal } from './opening-library';
 import { exportActiveOpening, exportAll } from './pgn-export';
 import { getExplorerData, getExplorerCache, getPhase } from './game';
@@ -24,7 +22,6 @@ import {
   type GameMeta,
 } from './personal-explorer';
 import { isReportPageOpen } from './report-ui';
-import { confirmModal, type ConfirmButton } from './confirm';
 import {
   updateExplorerPanel, updateRecentGamesPanel,
   setExplorerAlwaysShow, resetExplorerRevealed,
@@ -66,7 +63,6 @@ let currentEvalWinPct: number | null = null;
 let loadedGame: GameMeta | null = null;
 
 // Remember last engine line count so toggling on restores previous setting
-let lastEngineLineCount = 3;
 type HistoryLinesView = 'history' | 'lines';
 let historyLinesView: HistoryLinesView = 'history';
 
@@ -131,7 +127,6 @@ export function initUI(
   onRetryExplorer?: RetryExplorerCallback,
 ): void {
   currentConfig = { ...config };
-  if (config.engineLineCount > 0) lastEngineLineCount = config.engineLineCount;
   configChangeCb = onConfigChange;
   newGameCb = onNewGame;
   flipCb = onFlip;
@@ -149,7 +144,6 @@ export function initUI(
   initHistoryLinesToggle();
   renderSystemPicker();
   renderControls();
-  renderConfigPanel();
   initHelpModal();
   initTooltips();
   document.addEventListener('click', () => closeAllDropdowns());
@@ -187,21 +181,17 @@ function initHistoryLinesToggle(): void {
 
 // ── System Picker ──
 
-type PickerMode = 'normal' | 'rename' | 'merge-select';
-let pickerMode: PickerMode = 'normal';
+const explorePicker = createOpeningPicker({
+  mode: 'explore',
+  getContainer: () => document.getElementById('system-picker'),
+  onChange: () => {
+    openingChangeCb?.();
+    renderRepertoireActions();
+  },
+});
 
 export function renderSystemPicker(): void {
-  const el = document.getElementById('system-picker')!;
-  el.innerHTML = '';
-
-  const active = getActiveOpening();
-  const isFreePlay = active === FREE_PLAY_NAME;
-
-  if (pickerMode !== 'merge-select' && pickerMode !== 'rename') {
-    pickerMode = 'normal';
-  }
-  renderNormalMode(el, active, isFreePlay);
-
+  explorePicker.render();
   renderRepertoireActions();
 }
 
@@ -293,509 +283,24 @@ function renderRepertoireActions(): void {
   el.append(primaryRow);
 }
 
-const SVG_EDIT = '<svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
-const SVG_TRASH = '<svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
-const SVG_PLUS = '<svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
-const SVG_GLOBE = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
-const SVG_BOOK = '<svg viewBox="0 0 24 24"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></svg>';
-
-const SVG_LAYERS = '<svg viewBox="0 0 24 24"><path d="M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z"/></svg>';
-const SVG_MERGE = '<svg viewBox="0 0 24 24"><path d="M17 20.41L18.41 19 15 15.59 13.59 17 17 20.41zM7.5 8H11v5.59L5.59 19 7 20.41l6-6V8h3.5L12 3.5 7.5 8z"/></svg>';
-const SVG_CHEVRON = '<svg viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>';
-const SVG_CLOSE = '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
-const SVG_CHECK = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
-
-let dropdownOpen = false;
-let mergeSelected: Set<string> = new Set();
-let dropdownOutsideClickCleanup: (() => void) | null = null;
-
-function makeCardIcon(type: 'free-play' | 'full-rep' | 'custom'): HTMLElement {
-  const icon = document.createElement('div');
-  icon.className = `system-card-icon ${type}`;
-  const svgMap = { 'free-play': SVG_GLOBE, 'full-rep': SVG_LAYERS, 'custom': SVG_BOOK };
-  const tooltipMap = { 'free-play': 'Free Play', 'full-rep': 'Full Repertoire', 'custom': 'Custom opening' };
-  icon.innerHTML = svgMap[type];
-  icon.setAttribute('data-tooltip', tooltipMap[type]);
-  icon.classList.add('tooltip-below');
-  icon.querySelector('svg')!.setAttribute('width', '16');
-  icon.querySelector('svg')!.setAttribute('height', '16');
-  icon.querySelector('svg')!.style.fill = 'currentColor';
-  return icon;
-}
-
-function renderNormalMode(el: HTMLElement, active: string, _isFreePlay: boolean): void {
-  const names = getOpeningNames();
-  const customRepertoires = names.filter(n => n !== FREE_PLAY_NAME);
-  const isFreePlayActive = active === FREE_PLAY_NAME;
-  const isFullRepActive = active === FULL_REPERTOIRE_NAME;
-  const isCustomActive = !isFreePlayActive && !isFullRepActive;
-
-  // Clean up stale outside-click listener from previous render
-  dropdownOutsideClickCleanup?.();
-  dropdownOutsideClickCleanup = null;
-
-  // ── Single dropdown card ──
-  const wrapper = document.createElement('div');
-  wrapper.className = 'system-dropdown-anchor';
-
-  const card = document.createElement('div');
-  card.className = 'system-card active';
-
-  const activeIconType = isFreePlayActive ? 'free-play' : isFullRepActive ? 'full-rep' : 'custom';
-  card.append(makeCardIcon(activeIconType));
-
-  const isRenaming = pickerMode === 'rename' && isCustomActive;
-
-  if (isRenaming) {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'system-card-rename-input';
-    input.value = active;
-    input.placeholder = 'Opening name...';
-
-    function saveRename(): void {
-      const newName = input.value.trim();
-      if (newName && newName !== active) {
-        renameOpening(active, newName);
-        openingChangeCb?.();
-      }
-      pickerMode = 'normal';
-      renderSystemPicker();
-    }
-
-    function cancelRename(): void {
-      pickerMode = 'normal';
-      renderSystemPicker();
-    }
-
-    input.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') saveRename();
-      if (e.key === 'Escape') cancelRename();
-    });
-    input.addEventListener('blur', saveRename);
-
-    card.append(input);
-    requestAnimationFrame(() => {
-      input.focus();
-      input.select();
-    });
-  } else {
-    const nameEl = document.createElement('div');
-    nameEl.className = 'system-card-name';
-    nameEl.textContent = active;
-    card.append(nameEl);
-  }
-
-  // Inline icon actions for custom openings
-  if (isCustomActive) {
-    const actions = document.createElement('div');
-    actions.className = 'system-card-actions';
-
-    const renameBtn = document.createElement('button');
-    renameBtn.className = 'system-card-action-btn';
-    renameBtn.setAttribute('data-tooltip', 'Rename');
-    renameBtn.innerHTML = SVG_EDIT;
-    renameBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      dropdownOpen = false;
-      pickerMode = 'rename';
-      renderSystemPicker();
-    });
-
-    const mergeBtn = document.createElement('button');
-    mergeBtn.className = 'system-card-action-btn';
-    mergeBtn.setAttribute('data-tooltip', 'Merge openings');
-    mergeBtn.innerHTML = SVG_MERGE;
-    const customCount = names.filter(n => n !== FREE_PLAY_NAME).length;
-    if (customCount < 2) {
-      mergeBtn.style.display = 'none';
-    }
-    mergeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      mergeSelected = new Set([active]);
-      pickerMode = 'merge-select';
-      dropdownOpen = true;
-      renderSystemPicker();
-    });
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'system-card-action-btn danger';
-    deleteBtn.setAttribute('data-tooltip', 'Delete opening');
-    deleteBtn.innerHTML = SVG_TRASH;
-    deleteBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const anchorRect = deleteBtn.getBoundingClientRect();
-      dropdownOpen = false;
-      renderSystemPicker();
-      const result = await confirmModal({
-        title: `Delete "${active}"?`,
-        message: 'This will permanently remove this opening and all its locked moves.',
-        buttons: [{ label: 'Delete', value: 'delete', style: 'danger' }],
-        danger: true,
-        anchor: anchorRect,
-      });
-      if (result === 'delete') {
-        deleteOpening(active);
-        pickerMode = 'normal';
-        openingChangeCb?.();
-        renderSystemPicker();
-      }
-    });
-
-    actions.append(renameBtn, mergeBtn, deleteBtn);
-    card.append(actions);
-  }
-
-    // Dropdown chevron
-    const chevron = document.createElement('div');
-    chevron.className = `system-dropdown-chevron${dropdownOpen ? ' open' : ''}`;
-    chevron.innerHTML = SVG_CHEVRON;
-    card.append(chevron);
-
-    card.addEventListener('click', () => {
-      dropdownOpen = !dropdownOpen;
-      if (pickerMode === 'merge-select') {
-        pickerMode = 'normal';
-      }
-      renderSystemPicker();
-    });
-
-    wrapper.append(card);
-
-    // Dropdown list
-    if (dropdownOpen) {
-      // Close on click outside
-      requestAnimationFrame(() => {
-        const onClickOutside = (e: MouseEvent) => {
-          if (!wrapper.contains(e.target as Node)) {
-            dropdownOpen = false;
-            if (pickerMode === 'merge-select') pickerMode = 'normal';
-            cleanup();
-            renderSystemPicker();
-          }
-        };
-        function cleanup() {
-          document.removeEventListener('click', onClickOutside, true);
-          dropdownOutsideClickCleanup = null;
-        }
-        document.addEventListener('click', onClickOutside, true);
-        dropdownOutsideClickCleanup = cleanup;
-      });
-
-      const dropdown = document.createElement('div');
-      dropdown.className = 'system-dropdown';
-
-      if (pickerMode === 'merge-select') {
-        // Merge-select: header + checkboxes for all custom openings + merge/cancel
-        const header = document.createElement('div');
-        header.className = 'system-dropdown-header';
-        header.textContent = 'Select openings to merge';
-        dropdown.append(header);
-
-        for (const name of customRepertoires) {
-          const checked = mergeSelected.has(name);
-          const item = document.createElement('div');
-          item.className = 'system-dropdown-item';
-
-          const check = document.createElement('div');
-          check.className = 'system-card-check';
-          if (checked) check.classList.add('checked');
-          check.innerHTML = SVG_CHECK;
-          check.querySelector('svg')!.setAttribute('width', '10');
-          check.querySelector('svg')!.setAttribute('height', '10');
-          check.querySelector('svg')!.style.fill = '#fff';
-          check.querySelector('svg')!.style.opacity = checked ? '1' : '0';
-          item.append(check);
-
-          const itemName = document.createElement('div');
-          itemName.className = 'system-card-name';
-          itemName.textContent = name;
-          item.append(itemName);
-
-          item.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (mergeSelected.has(name)) {
-              mergeSelected.delete(name);
-            } else {
-              mergeSelected.add(name);
-            }
-            // Update checkbox in-place
-            const isNowChecked = mergeSelected.has(name);
-            check.classList.toggle('checked', isNowChecked);
-            check.querySelector('svg')!.style.opacity = isNowChecked ? '1' : '0';
-            // Update merge button
-            updateMergeAction();
-          });
-          dropdown.append(item);
-        }
-
-        // Merge button
-        const mergeAction = document.createElement('div');
-        mergeAction.className = 'system-dropdown-item system-dropdown-add';
-        mergeAction.innerHTML = `${SVG_MERGE} <span class="system-card-name">Merge ${mergeSelected.size} openings</span>`;
-        mergeAction.querySelector('svg')!.setAttribute('width', '14');
-        mergeAction.querySelector('svg')!.setAttribute('height', '14');
-        mergeAction.querySelector('svg')!.style.fill = 'currentColor';
-
-        function updateMergeAction() {
-          const count = mergeSelected.size;
-          mergeAction.querySelector('.system-card-name')!.textContent = `Merge ${count} openings`;
-          mergeAction.style.opacity = count < 2 ? '0.4' : '';
-          mergeAction.style.pointerEvents = count < 2 ? 'none' : '';
-        }
-        updateMergeAction();
-        mergeAction.addEventListener('click', async () => {
-          const selectedNames = [...mergeSelected];
-          dropdownOpen = false;
-          pickerMode = 'normal';
-          renderSystemPicker();
-
-          const buttons: ConfirmButton[] = selectedNames.map(n => ({ label: n, value: n }));
-          buttons.push({ label: 'New opening', value: '__new__', style: 'primary' });
-
-          const result = await confirmModal({
-            title: 'Merge into\u2026',
-            message: 'Choose which name to keep. All locked moves will be combined and the rest deleted.',
-            buttons,
-            layout: 'vertical',
-          });
-          if (result) {
-            mergeMultiple(selectedNames, result === '__new__' ? null : result);
-            openingChangeCb?.();
-            renderSystemPicker();
-          }
-        });
-        dropdown.append(mergeAction);
-
-        const cancelItem = document.createElement('div');
-        cancelItem.className = 'system-dropdown-item system-dropdown-cancel';
-        cancelItem.innerHTML = `${SVG_CLOSE} <span class="system-card-name">Cancel</span>`;
-        cancelItem.querySelector('svg')!.setAttribute('width', '14');
-        cancelItem.querySelector('svg')!.setAttribute('height', '14');
-        cancelItem.querySelector('svg')!.style.fill = 'currentColor';
-        cancelItem.addEventListener('click', () => {
-          dropdownOpen = false;
-          pickerMode = 'normal';
-          renderSystemPicker();
-        });
-        dropdown.append(cancelItem);
-      } else {
-        // Normal dropdown: New opening, divider, Free Play, Full Repertoire, divider, custom openings
-
-        // New opening (always first)
-        const addItem = document.createElement('div');
-        addItem.className = 'system-dropdown-item system-dropdown-add';
-        addItem.innerHTML = `${SVG_PLUS} <span class="system-card-name">New opening</span>`;
-        addItem.querySelector('svg')!.setAttribute('width', '16');
-        addItem.querySelector('svg')!.setAttribute('height', '16');
-        addItem.querySelector('svg')!.style.fill = 'currentColor';
-        addItem.addEventListener('click', () => {
-          dropdownOpen = false;
-          createOpening();
-          openingChangeCb?.();
-          pickerMode = 'rename';
-          renderSystemPicker();
-        });
-        dropdown.append(addItem);
-
-        // Divider after New opening
-        const divider1 = document.createElement('div');
-        divider1.className = 'system-dropdown-divider';
-        dropdown.append(divider1);
-
-        // Free Play option
-        if (!isFreePlayActive) {
-          const fpItem = document.createElement('div');
-          fpItem.className = 'system-dropdown-item';
-          fpItem.append(makeCardIcon('free-play'));
-          const fpName = document.createElement('div');
-          fpName.className = 'system-card-name';
-          fpName.textContent = FREE_PLAY_NAME;
-          fpItem.append(fpName);
-          fpItem.addEventListener('click', () => {
-            dropdownOpen = false;
-            switchOpening(FREE_PLAY_NAME);
-            openingChangeCb?.();
-            renderSystemPicker();
-          });
-          dropdown.append(fpItem);
-        }
-
-        // Full Repertoire option (when 2+ custom openings exist)
-        if (customRepertoires.length > 1 && !isFullRepActive) {
-          const frItem = document.createElement('div');
-          frItem.className = 'system-dropdown-item';
-          frItem.append(makeCardIcon('full-rep'));
-          const frName = document.createElement('div');
-          frName.className = 'system-card-name';
-          frName.textContent = FULL_REPERTOIRE_NAME;
-          frItem.append(frName);
-          frItem.addEventListener('click', () => {
-            dropdownOpen = false;
-            switchOpening(FULL_REPERTOIRE_NAME);
-            openingChangeCb?.();
-            renderSystemPicker();
-          });
-          dropdown.append(frItem);
-        }
-
-        // Divider before custom openings (if any exist)
-        if (customRepertoires.length > 0) {
-          const divider2 = document.createElement('div');
-          divider2.className = 'system-dropdown-divider';
-          dropdown.append(divider2);
-        }
-
-        // Custom openings
-        for (const name of customRepertoires) {
-          if (name === active && isCustomActive) continue;
-          const item = document.createElement('div');
-          item.className = 'system-dropdown-item';
-
-          item.append(makeCardIcon('custom'));
-
-          const itemName = document.createElement('div');
-          itemName.className = 'system-card-name';
-          itemName.textContent = name;
-          item.append(itemName);
-
-          item.addEventListener('click', () => {
-            dropdownOpen = false;
-            switchOpening(name);
-            openingChangeCb?.();
-            renderSystemPicker();
-          });
-
-          dropdown.append(item);
-        }
-      }
-
-      wrapper.append(dropdown);
-    }
-
-    el.append(wrapper);
-
-
-}
-
-
-const MODE_OPTIONS: { value: PlayerColor; label: string }[] = [
-  { value: 'white', label: 'White' },
-  { value: 'black', label: 'Black' },
-  { value: 'both', label: 'Manual' },
-];
-
 function renderControls(): void {
   const el = document.getElementById('controls')!;
   el.innerHTML = '';
-
-  const newGameBtn = document.createElement('button');
-  newGameBtn.textContent = 'New Game';
-  newGameBtn.className = 'btn btn-primary';
-  newGameBtn.addEventListener('click', () => newGameCb());
 
   const flipBtn = document.createElement('button');
   flipBtn.textContent = 'Flip Board';
   flipBtn.className = 'btn';
   flipBtn.addEventListener('click', () => flipCb());
 
-  const segmentSection = document.createElement('div');
-  segmentSection.className = 'config-toggle-header';
+  const resetBtn = document.createElement('button');
+  resetBtn.textContent = 'Reset';
+  resetBtn.className = 'btn btn-primary';
+  resetBtn.addEventListener('click', () => newGameCb());
 
-  const segment = document.createElement('div');
-  segment.className = 'segment-picker';
-
-  for (const opt of MODE_OPTIONS) {
-    const btn = document.createElement('button');
-    btn.className = `segment-btn${currentConfig.playerColor === opt.value ? ' selected' : ''}`;
-    btn.textContent = opt.label;
-    btn.dataset.value = opt.value;
-    btn.addEventListener('click', () => {
-      if (currentConfig.playerColor === opt.value) return;
-      currentConfig.playerColor = opt.value;
-      segment.querySelectorAll('.segment-btn').forEach((b) => b.classList.remove('selected'));
-      btn.classList.add('selected');
-      configChangeCb(currentConfig);
-    });
-    segment.append(btn);
-  }
-
-  const segmentInfo = document.createElement('div');
-  segmentInfo.className = 'info-icon-wrap';
-  segmentInfo.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
-  const segmentTooltip = document.createElement('div');
-  segmentTooltip.className = 'info-tooltip';
-  segmentTooltip.innerHTML =
-    '<b>White</b> — you play white, bot plays black.<br>' +
-    '<b>Black</b> — you play black, bot plays white.<br>' +
-    '<b>Manual</b> — play both sides freely, no bot.';
-  segmentInfo.append(segmentTooltip);
-
-  segmentSection.append(segment, segmentInfo);
-
-  el.append(segmentSection, flipBtn, newGameBtn);
+  el.append(flipBtn, resetBtn);
 }
 
 
-function renderConfigPanel(): void {
-  const inlineEl = document.getElementById('config-inline')!;
-  inlineEl.innerHTML = '';
-
-  // ── Display chips ──
-  const displaySection = document.createElement('div');
-  displaySection.className = 'config-toggle-section';
-
-  const displayGrid = document.createElement('div');
-  displayGrid.className = 'chip-grid';
-
-  const evalChip = document.createElement('button');
-  evalChip.className = `chip${currentConfig.showEval ? ' selected' : ''}`;
-  evalChip.textContent = 'Eval';
-  evalChip.setAttribute('data-tooltip', 'Stockfish evaluation bar next to the board');
-  evalChip.addEventListener('click', () => {
-    const isOn = evalChip.classList.toggle('selected');
-    currentConfig.showEval = isOn;
-    configChangeCb(currentConfig);
-  });
-
-  const badgesChip = document.createElement('button');
-  badgesChip.className = `chip${currentConfig.showMoveBadges ? ' selected' : ''}`;
-  badgesChip.textContent = 'Badges';
-  badgesChip.setAttribute('data-tooltip', 'Mark best moves (!), mistakes (?), and traps (?!)');
-  badgesChip.addEventListener('click', () => {
-    const isOn = badgesChip.classList.toggle('selected');
-    currentConfig.showMoveBadges = isOn;
-    configChangeCb(currentConfig);
-  });
-
-  const explorerChip = document.createElement('button');
-  explorerChip.className = `chip${currentConfig.showExplorer ? ' selected' : ''}`;
-  explorerChip.textContent = 'Explorer';
-  explorerChip.setAttribute('data-tooltip', 'Show explorer during bot play');
-  explorerChip.addEventListener('click', () => {
-    const isOn = explorerChip.classList.toggle('selected');
-    currentConfig.showExplorer = isOn;
-    configChangeCb(currentConfig);
-  });
-
-  const engineLinesChip = document.createElement('button');
-  const elCount = currentConfig.engineLineCount;
-  engineLinesChip.className = `chip${elCount > 0 ? ' selected' : ''}`;
-  engineLinesChip.textContent = 'Engine';
-  engineLinesChip.setAttribute('data-tooltip', 'Show engine analysis lines');
-  engineLinesChip.addEventListener('click', () => {
-    const wasOn = currentConfig.engineLineCount > 0;
-    currentConfig.engineLineCount = wasOn ? 0 : (lastEngineLineCount || 1);
-    engineLinesChip.classList.toggle('selected', !wasOn);
-    configChangeCb(currentConfig);
-  });
-
-  displayGrid.append(evalChip, badgesChip, explorerChip, engineLinesChip);
-  displaySection.append(displayGrid);
-
-  inlineEl.append(displaySection);
-}
 
 function closeAllDropdowns(): void {
   document.querySelectorAll('.explorer-cog-popover').forEach(p => p.classList.add('hidden'));
@@ -953,8 +458,8 @@ export function updateMoveList(): void {
     const blackActive = black && (i + 2) === vi ? ' active' : '';
     const whiteRepClass = repClass(i, history);
     const blackRepClass = black ? repClass(i + 1, history) : '';
-    const whiteBadge = currentConfig.showMoveBadges ? historyBadge(i, history) : '';
-    const blackBadge = black && currentConfig.showMoveBadges ? historyBadge(i + 1, history) : '';
+    const whiteBadge = historyBadge(i, history);
+    const blackBadge = black ? historyBadge(i + 1, history) : '';
     html += `<div class="move-num">${moveNum}.</div>
       <div class="move-san clickable${whiteActive}${whiteRepClass}" data-vi="${i + 1}">${white.san}${whiteBadge}</div>
       <div class="move-san${black ? ` clickable${blackActive}${blackRepClass}` : ''}"${black ? ` data-vi="${i + 2}"` : ''}>${black ? black.san + blackBadge : ''}</div>`;

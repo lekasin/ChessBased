@@ -33,6 +33,7 @@ export const DEFAULT_THRESHOLDS: AlertThresholds = {
 };
 
 export type BotWeighting = 'weighted' | 'equal';
+export type PlayMode = 'strict' | 'relaxed' | 'drill';
 
 export type AlertType = 'danger' | 'opportunity' | 'trap';
 export const ALL_ALERT_TYPES: AlertType[] = ['danger', 'opportunity', 'trap'];
@@ -42,14 +43,12 @@ export interface AppConfig {
   speeds: string[];
   topMoves: number;
   playerColor: PlayerColor;
-  showEval: boolean;
   botWeighting: BotWeighting;
   botMinPlayRatePct: number;
   enabledAlerts: AlertType[];
-  showMoveBadges: boolean;
-  showExplorer: boolean;
   engineLineCount: number;
   lichessToken: string;
+  playMode: PlayMode;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -57,14 +56,12 @@ export const DEFAULT_CONFIG: AppConfig = {
   speeds: ['blitz', 'rapid', 'classical'],
   topMoves: 5,
   playerColor: 'white',
-  showEval: true,
   botWeighting: 'weighted',
   botMinPlayRatePct: 5,
   enabledAlerts: ['danger', 'opportunity', 'trap'],
-  showMoveBadges: true,
-  showExplorer: true,
   engineLineCount: 1,
   lichessToken: '',
+  playMode: 'relaxed',
 };
 
 export const RATING_OPTIONS = [400, 1000, 1200, 1400, 1600, 1800, 2000, 2200, 2500];
