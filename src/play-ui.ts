@@ -51,10 +51,8 @@ export function setPlayingState(isPlaying: boolean): void {
   playing = isPlaying;
   const setup = document.getElementById('play-setup');
   const settings = document.getElementById('play-settings');
-  const boardControls = document.getElementById('play-board-controls');
   if (setup) setup.classList.toggle('hidden', isPlaying);
   if (settings) settings.classList.toggle('hidden', !isPlaying);
-  if (boardControls && !isPlaying) boardControls.classList.add('hidden');
 }
 
 export function isPlaying(): boolean {
@@ -393,26 +391,21 @@ export function renderPlayingView(phase: GamePhase, openingName?: string): void 
   actions.append(restartBtn, quitBtn);
   container.append(actions);
 
+  const secondaryActions = el('div', 'play-actions');
+
+  const hintBtn = document.createElement('button');
+  hintBtn.className = 'btn play-action-full';
+  hintBtn.setAttribute('data-tooltip', 'Show hint (Space)');
+  hintBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg> Hint';
+  hintBtn.addEventListener('click', () => onHint?.());
+
   const exploreBtn = document.createElement('button');
-  exploreBtn.className = 'btn ghost play-explore-btn';
+  exploreBtn.className = 'btn play-action-full';
   exploreBtn.textContent = 'Open in explorer';
   exploreBtn.addEventListener('click', goToExplore);
-  container.append(exploreBtn);
 
-  // Board controls — below the board (hint only)
-  const boardControls = document.getElementById('play-board-controls');
-  if (boardControls) {
-    boardControls.innerHTML = '';
-    boardControls.classList.remove('hidden');
-
-    const hintBtn = document.createElement('button');
-    hintBtn.className = 'btn play-board-btn';
-    hintBtn.setAttribute('data-tooltip', 'Show hint (Space)');
-    hintBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg> Hint';
-    hintBtn.addEventListener('click', () => onHint?.());
-
-    boardControls.append(hintBtn);
-  }
+  secondaryActions.append(hintBtn, exploreBtn);
+  container.append(secondaryActions);
 
   setPlayingState(true);
 }

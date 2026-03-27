@@ -703,6 +703,7 @@ function boot(): void {
       saveConfig(config);
       updateConfig(config);
       updateMoveList();
+      fetchExplorerForFen(getViewedFen());
     }
     if (mode === 'play') refreshPlayPicker();
 

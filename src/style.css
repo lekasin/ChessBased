@@ -208,7 +208,7 @@ body {
 
 /* ── Report Mode Proportions (base max-widths live in the component rules below) ── */
 /* Report mode proportions */
-/* Play mode: hide left sidebar, center board */
+/* Play mode: hide left sidebar */
 #app.mode-play #left-sidebar { display: none; }
 
 #app.mode-report #left-sidebar  { max-width: 700px; }
@@ -2178,28 +2178,7 @@ cg-board square.selected {
   flex: 1;
 }
 
-.play-explore-btn {
-  flex-shrink: 0;
-  width: 100%;
-}
 
-#play-board-controls {
-  display: flex;
-  gap: 8px;
-  padding-top: 6px;
-  justify-content: flex-end;
-}
-
-#play-board-controls.hidden {
-  display: none;
-}
-
-.play-board-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
 
 .play-toast {
   position: absolute;
